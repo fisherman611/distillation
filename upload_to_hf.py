@@ -17,6 +17,6 @@ api = HfApi()
 
 api.upload_folder(
     folder_path="results/",
-    repo_id="fisherman611/text-to-cypher-distillation",
+    repo_id="fisherman611/text-to-cypher-llama-model",
     repo_type="model",
 )
