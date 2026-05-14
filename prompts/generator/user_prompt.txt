@@ -1,0 +1,8 @@
+QUESTION:
+{question}
+
+SCHEMA:
+{schema}
+
+Generate a Cypher query that answers the question using only the provided schema.
+Return only the JSON object in the required format.

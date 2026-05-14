@@ -1,0 +1,10 @@
+Question:
+{question}
+
+Schema:
+{schema}
+
+First, make a plan.
+Then, execute the plan step by step.
+Finally, give the answer.
+Return only the required XML output.
