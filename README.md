@@ -3,6 +3,9 @@
 ## Lệnh dùng nhanh
 
 ```bash
+# Login HF
+hf auth login
+
 uv sync
 source .venv/bin/activate
 bash running.sh \
