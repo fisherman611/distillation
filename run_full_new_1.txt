@@ -12,13 +12,7 @@ set -euo pipefail
 
 REPO_DIR="${REPO_DIR:-.}"
 cd "${REPO_DIR}"
-
-CACHE_ROOT="${CACHE_ROOT:-${REPO_DIR}/hf_cache}"
-mkdir -p "${CACHE_ROOT}"
-export HF_HOME="${CACHE_ROOT}"
-export HUGGINGFACE_HUB_CACHE="${CACHE_ROOT}"
-export TRANSFORMERS_CACHE="${CACHE_ROOT}"
-export HF_DATASETS_CACHE="${CACHE_ROOT}"
+git pull --ff-only
 
 eval "$(conda shell.bash hook)"
 
