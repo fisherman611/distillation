@@ -13,7 +13,7 @@ set -euo pipefail
 REPO_DIR="${REPO_DIR:-.}"
 cd "${REPO_DIR}"
 
-CACHE_ROOT="/data/project/le-lab/LLM_Distillation/hf_cache"
+CACHE_ROOT="${CACHE_ROOT:-${REPO_DIR}/hf_cache}"
 mkdir -p "${CACHE_ROOT}"
 export HF_HOME="${CACHE_ROOT}"
 export HUGGINGFACE_HUB_CACHE="${CACHE_ROOT}"
