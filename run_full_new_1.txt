@@ -57,8 +57,9 @@ HF_TOKEN="${HF_TOKEN:-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}"
 hf auth login --token "${HF_TOKEN}"
 
 bash running.sh \
-  --gpus 0,1,2,3 \
-  --gpus-per-job 2 \
+  --filter part_1 \
+  --gpus 4,5,6,7 \
+  --gpus-per-job 1 \
   --infer-after-train \
   --infer-db full \
   --infer-batch-size 32

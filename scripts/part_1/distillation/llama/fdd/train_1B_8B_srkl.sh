@@ -28,10 +28,10 @@ TEACHER_CKPT="${TEACHER_CKPT:-meta-llama/Meta-Llama-3-8B-Instruct}"
 # data
 DATA_DIR="${DATA_DIR:-hf://fisherman611/text-to-cypher-processed-data/Cypherbench/llama}"
 # hp
-BATCH_SIZE=16
+BATCH_SIZE=8
 LR=0.0001
-GRAD_ACC=1
-EVAL_BATCH_SIZE=32
+GRAD_ACC=2
+EVAL_BATCH_SIZE=16
 EPOCHS=5
 # length
 MAX_LENGTH=899
