@@ -70,6 +70,8 @@ class Encoder(object):
             ) + [Encoder.tokenizer.eos_token_id]
             # Split response using untruncated prompt length to avoid leaking prompt tail into labels.
             response_tokens = full_tokens[len(full_prompt_tokens):]
+            if not response_tokens or response_tokens[-1] != Encoder.tokenizer.eos_token_id:
+                response_tokens = (response_tokens or []) + [Encoder.tokenizer.eos_token_id]
 
         t_prompt_tokens = None
         if self.args.split == "train" and t_system_prompt is not None and t_user_prompt is not None:
@@ -108,8 +110,12 @@ def load_split_data(args):
     return data
 
 
-def get_builder_dtype(args):
-    return np.uint32 if args.model_type == "qwen" else np.uint16
+def get_builder_dtype(tokenizer):
+    # Use uint16 only when vocab is safely below separator value 65535.
+    vocab_size = getattr(tokenizer, "vocab_size", None)
+    if vocab_size is not None and vocab_size < 65500:
+        return np.uint16
+    return np.int32
 
 
 def main():
@@ -140,7 +146,11 @@ def main():
     bin_file = os.path.join(args.processed_data_dir, f"{args.split}_0.bin")
     idx_file = os.path.join(args.processed_data_dir, f"{args.split}_0.idx")
 
-    dtype = get_builder_dtype(args)
+    tokenizer_for_dtype = AutoTokenizer.from_pretrained(
+        args.model_path,
+        padding_side="right",
+    )
+    dtype = get_builder_dtype(tokenizer_for_dtype)
     binary_builder = make_builder(bin_file, impl="mmap", dtype=dtype)
 
     t_binary_builder = None

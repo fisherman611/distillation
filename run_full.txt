@@ -1,0 +1,64 @@
+#!/bin/bash
+#SBATCH --account=le-lab
+#SBATCH --gres=gpu:L40S:8
+#SBATCH --mem=256GB
+#SBATCH --time=72:00:00
+#SBATCH --partition=general
+#SBATCH --output=run_all-%j.out
+#SBATCH --mail-type=END,FAIL
+#SBATCH --mail-user=tucnguye@iu.edu
+
+set -euo pipefail
+
+CLONE_PARENT="${CLONE_PARENT:-/data/project/le-lab/LLM_Distillation}"
+REPO_URL="${REPO_URL:-https://github.com/fisherman611/distillation.git}"
+REPO_NAME="${REPO_NAME:-distillation}"
+REPO_DIR="${CLONE_PARENT}/${REPO_NAME}"
+REPO_BRANCH="${REPO_BRANCH:-}"
+
+mkdir -p "${CLONE_PARENT}"
+cd "${CLONE_PARENT}"
+
+if [[ ! -d "${REPO_DIR}/.git" ]]; then
+  echo "=== Cloning repo: ${REPO_URL} -> ${REPO_DIR} ==="
+  git clone "${REPO_URL}" "${REPO_NAME}"
+else
+  echo "=== Repo exists, updating: ${REPO_DIR} ==="
+fi
+
+cd "${REPO_DIR}"
+git fetch --all --prune
+if [[ -n "${REPO_BRANCH}" ]]; then
+  git checkout "${REPO_BRANCH}"
+fi
+git pull --ff-only
+
+CACHE_ROOT="/data/project/le-lab/LLM_Distillation/hf_cache"
+mkdir -p "${CACHE_ROOT}"
+export HF_HOME="${CACHE_ROOT}"
+export HUGGINGFACE_HUB_CACHE="${CACHE_ROOT}"
+export TRANSFORMERS_CACHE="${CACHE_ROOT}"
+export HF_DATASETS_CACHE="${CACHE_ROOT}"
+
+eval "$(conda shell.bash hook)"
+
+ENV_NAME="distillation"
+if ! conda env list | awk '{print $1}' | grep -qx "${ENV_NAME}"; then
+  conda create -n "${ENV_NAME}" python=3.10 -y
+fi
+conda activate "${ENV_NAME}"
+
+python -m pip install --upgrade pip
+python -m pip install uv
+uv sync
+source .venv/bin/activate
+
+HF_TOKEN="${HF_TOKEN:-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}"
+hf auth login --token "${HF_TOKEN}"
+
+bash running.sh \
+  --gpus 0,1,2,3 \
+  --gpus-per-job 2 \
+  --infer-after-train \
+  --infer-db full \
+  --infer-batch-size 32
