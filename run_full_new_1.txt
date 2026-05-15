@@ -10,7 +10,7 @@
 
 set -euo pipefail
 
-REPO_DIR="${REPO_DIR:-/data/project/le-lab/LLM_Distillation/distillation}"
+REPO_DIR="${REPO_DIR:-.}"
 cd "${REPO_DIR}"
 
 CACHE_ROOT="/data/project/le-lab/LLM_Distillation/hf_cache"
