@@ -56,13 +56,17 @@ class ReplayBuffer:
     
     def move_to_device(self, model_data, no_model_data, gen_data, device):
         for k in model_data:
-            model_data[k] = model_data[k].to(device)
+            if isinstance(model_data[k], torch.Tensor):
+                model_data[k] = model_data[k].to(device)
 
         for k in no_model_data:
-            no_model_data[k] = no_model_data[k].to(device)
+            if isinstance(no_model_data[k], torch.Tensor):
+                no_model_data[k] = no_model_data[k].to(device)
 
-        for k in gen_data:
-            gen_data[k] = gen_data[k].to(device)
+        if gen_data is not None:
+            for k in gen_data:
+                if isinstance(gen_data[k], torch.Tensor):
+                    gen_data[k] = gen_data[k].to(device)
 
         return model_data, no_model_data, gen_data
     
