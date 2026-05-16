@@ -4,6 +4,7 @@ threshold=0.1
 model_name=Qwen/Qwen3-0.6B
 indirect_kd_alpha=0.1
 teacher_model_name=Qwen/Qwen3-4B-Instruct-2507
+output_dir="${OUTPUT_DIR:-results/tsd-kd/qwen/no_seq_kd}"
 
 if [[ -n "${RUN_GPUS:-}" ]]; then
   export CUDA_VISIBLE_DEVICES="${RUN_GPUS}"
@@ -36,4 +37,5 @@ accelerate launch \
   --threshold $threshold \
   --model-name $model_name \
   --indirect-kd-alpha $indirect_kd_alpha \
-  --teacher-model-name $teacher_model_name
+  --teacher-model-name $teacher_model_name \
+  --output-dir "$output_dir"

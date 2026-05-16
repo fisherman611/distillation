@@ -4,6 +4,7 @@ threshold=0.1
 model_name=meta-llama/Llama-3.2-1B-Instruct
 indirect_kd_alpha=0.1
 teacher_model_name=meta-llama/Meta-Llama-3-8B-Instruct
+output_dir="${OUTPUT_DIR:-results/tsd-kd/llama/no_seq_kd}"
 
 if [[ -n "${RUN_GPUS:-}" ]]; then
   export CUDA_VISIBLE_DEVICES="${RUN_GPUS}"
@@ -36,4 +37,5 @@ accelerate launch \
   --threshold $threshold \
   --model-name $model_name \
   --indirect-kd-alpha $indirect_kd_alpha \
-  --teacher-model-name $teacher_model_name
+  --teacher-model-name $teacher_model_name \
+  --output-dir "$output_dir"
