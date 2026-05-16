@@ -20,10 +20,27 @@ class ReplayBuffer:
         self.bs = args.batch_size
         if args.model_type in ["gpt2", "llama"]:
             self.data = namedtuple("Generation", \
-               field_names=["input_ids", "attention_mask", "position_ids", "label", "loss_mask", "prompt_attention_mask"])
+               field_names=[
+                   "input_ids",
+                   "attention_mask",
+                   "position_ids",
+                   "label",
+                   "loss_mask",
+                   "prompt_attention_mask",
+                   "offset_mapping",
+                   "span_offsets",
+               ])
         else:
             self.data = namedtuple("Generation", \
-               field_names=["input_ids", "attention_mask", "label", "loss_mask", "prompt_attention_mask"])
+               field_names=[
+                   "input_ids",
+                   "attention_mask",
+                   "label",
+                   "loss_mask",
+                   "prompt_attention_mask",
+                   "offset_mapping",
+                   "span_offsets",
+               ])
             
     def __len__(self):
         return len(self.replay_memory)
@@ -49,6 +66,10 @@ class ReplayBuffer:
         no_model_data = {
             "label": label, "loss_mask": loss_mask
         }
+        if all(d.offset_mapping is not None for d in data):
+            no_model_data["offset_mapping"] = torch.stack([d.offset_mapping for d in data], dim=0)
+        if all(d.span_offsets is not None for d in data):
+            no_model_data["span_offsets"] = [d.span_offsets for d in data]
         gen_data = {"attention_mask": prompt_attention_mask}
         
         return model_data, no_model_data, gen_data
@@ -91,12 +112,18 @@ class ReplayBuffer:
             prompt_attention_mask = gen_data["attention_mask"].to(device)
         else:
             prompt_attention_mask = model_data_cpu["attention_mask"]
+        offset_mapping = no_model_data_cpu.get("offset_mapping")
+        span_offsets = no_model_data_cpu.get("span_offsets")
         
         for idx in range(model_data_cpu["input_ids"].size(0)):
+            sample_offset_mapping = offset_mapping[idx] if isinstance(offset_mapping, torch.Tensor) else None
+            sample_span_offsets = span_offsets[idx] if isinstance(span_offsets, list) else None
             if self.args.model_type in ["gpt2", "llama"]:
                 e = self.data(model_data_cpu["input_ids"][idx], model_data_cpu["attention_mask"][idx], model_data_cpu["position_ids"][idx],
-                              no_model_data_cpu["label"][idx], no_model_data_cpu["loss_mask"][idx], prompt_attention_mask[idx])
+                              no_model_data_cpu["label"][idx], no_model_data_cpu["loss_mask"][idx], prompt_attention_mask[idx],
+                              sample_offset_mapping, sample_span_offsets)
             else:
                 e = self.data(model_data_cpu["input_ids"][idx], model_data_cpu["attention_mask"][idx],
-                              no_model_data_cpu["label"][idx], no_model_data_cpu["loss_mask"][idx], prompt_attention_mask[idx])
+                              no_model_data_cpu["label"][idx], no_model_data_cpu["loss_mask"][idx], prompt_attention_mask[idx],
+                              sample_offset_mapping, sample_span_offsets)
             self.replay_memory.append(e)
