@@ -66,16 +66,27 @@ class ReplayBuffer:
 
         return model_data, no_model_data, gen_data
     
-    def move_to_memory(self, model_data, no_model_data, gen_data):
+    def move_to_memory(self, model_data, no_model_data, gen_data=None):
         device = torch.device("cpu")
         model_data_cpu, no_model_data_cpu = {}, {}
         for k in model_data:
-            model_data_cpu[k] = model_data[k].to(device)
-        
-        for k in no_model_data:
-            no_model_data_cpu[k] = no_model_data[k].to(device)
+            if isinstance(model_data[k], torch.Tensor):
+                model_data_cpu[k] = model_data[k].to(device)
+            else:
+                model_data_cpu[k] = model_data[k]
 
-        prompt_attention_mask = gen_data["attention_mask"].to(device)
+        # no_model_data can contain metadata fields like `span_offsets` (list),
+        # so only tensors should be moved to cpu.
+        for k in no_model_data:
+            if isinstance(no_model_data[k], torch.Tensor):
+                no_model_data_cpu[k] = no_model_data[k].to(device)
+            else:
+                no_model_data_cpu[k] = no_model_data[k]
+
+        if gen_data is not None and "attention_mask" in gen_data and isinstance(gen_data["attention_mask"], torch.Tensor):
+            prompt_attention_mask = gen_data["attention_mask"].to(device)
+        else:
+            prompt_attention_mask = model_data_cpu["attention_mask"]
         
         for idx in range(model_data_cpu["input_ids"].size(0)):
             if self.args.model_type in ["gpt2", "llama"]:
