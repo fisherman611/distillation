@@ -11,6 +11,7 @@ QWEN_GPUS="${QWEN_GPUS:-${RUN_GPUS:-0}}"
 LLAMA_GPUS="${LLAMA_GPUS:-${RUN_GPUS:-0}}"
 LOG_ROOT="${LOG_ROOT:-run_logs/tsd-kd-test/$(date +%Y%m%d_%H%M%S)}"
 TEST_SCRIPT_ROOT="${TEST_SCRIPT_ROOT:-test_scripts}"
+LOG_TAIL_LINES="${LOG_TAIL_LINES:-80}"
 
 mkdir -p "$LOG_ROOT"
 
@@ -29,6 +30,7 @@ Environment:
   MAX_EVAL_SAMPLES=8            Smoke eval samples
   MAX_STEPS=5                   Smoke train steps
   LOG_ROOT=run_logs/...         Log directory
+  LOG_TAIL_LINES=80             Lines to print from a failed job log
   TEST_SCRIPT_ROOT=test_scripts Directory containing qwen-tsd-kd/test_finetune.sh and llama-tsd-kd/test_finetune.sh
 
 Examples:
@@ -101,12 +103,28 @@ run_job() {
   echo "[start] ${name}/${variant} GPUs=${gpus}"
   echo "        script=${script}"
   echo "        log=${log_file}"
+  local status=0
   RUN_GPUS="$gpus" \
     RUN_MASTER_PORT="$((10000 + RANDOM % 50000))" \
     SEQ_KD="$seq_value" \
     OUTPUT_DIR="$output_dir" \
-    bash "$script" > "$log_file" 2>&1
-  echo "[done] ${name}/${variant}"
+    bash "$script" > "$log_file" 2>&1 || status="$?"
+
+  if [[ "$status" -eq 0 ]]; then
+    echo "[done] ${name}/${variant}"
+    return 0
+  fi
+
+  echo "[fail] ${name}/${variant} exit=${status}"
+  echo "        log=${log_file}"
+  if [[ -s "$log_file" ]]; then
+    echo "-------- last ${LOG_TAIL_LINES} log lines --------"
+    tail -n "$LOG_TAIL_LINES" "$log_file"
+    echo "----------------------------------------"
+  else
+    echo "        log file is empty"
+  fi
+  return "$status"
 }
 
 if [[ "$MODE" == "parallel" ]]; then
