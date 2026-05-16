@@ -608,7 +608,7 @@ def finetune(
                 )
                 weighted_grounding_loss = weighted_grounding_loss.clamp(min=0.0, max=MAX_GROUNDING_LOSS)
 
-                distil_loss = distil_loss + weighted_grounding_loss
+                # distil_loss = distil_loss + weighted_grounding_loss
                 loss = (1 - args.kd_ratio) * lm_loss + args.kd_ratio * distil_loss
             else:
                 distil_loss = logits.new_tensor(0.0)
