@@ -20,27 +20,10 @@ class ReplayBuffer:
         self.bs = args.batch_size
         if args.model_type in ["gpt2", "llama"]:
             self.data = namedtuple("Generation", \
-               field_names=[
-                   "input_ids",
-                   "attention_mask",
-                   "position_ids",
-                   "label",
-                   "loss_mask",
-                   "prompt_attention_mask",
-                   "offset_mapping",
-                   "span_offsets",
-               ])
+               field_names=["input_ids", "attention_mask", "position_ids", "label", "loss_mask", "prompt_attention_mask"])
         else:
             self.data = namedtuple("Generation", \
-               field_names=[
-                   "input_ids",
-                   "attention_mask",
-                   "label",
-                   "loss_mask",
-                   "prompt_attention_mask",
-                   "offset_mapping",
-                   "span_offsets",
-               ])
+               field_names=["input_ids", "attention_mask", "label", "loss_mask", "prompt_attention_mask"])
             
     def __len__(self):
         return len(self.replay_memory)
@@ -66,10 +49,6 @@ class ReplayBuffer:
         no_model_data = {
             "label": label, "loss_mask": loss_mask
         }
-        if all(d.offset_mapping is not None for d in data):
-            no_model_data["offset_mapping"] = torch.stack([d.offset_mapping for d in data], dim=0)
-        if all(d.span_offsets is not None for d in data):
-            no_model_data["span_offsets"] = [d.span_offsets for d in data]
         gen_data = {"attention_mask": prompt_attention_mask}
         
         return model_data, no_model_data, gen_data
@@ -77,53 +56,32 @@ class ReplayBuffer:
     
     def move_to_device(self, model_data, no_model_data, gen_data, device):
         for k in model_data:
-            if isinstance(model_data[k], torch.Tensor):
-                model_data[k] = model_data[k].to(device)
+            model_data[k] = model_data[k].to(device)
 
         for k in no_model_data:
-            if isinstance(no_model_data[k], torch.Tensor):
-                no_model_data[k] = no_model_data[k].to(device)
+            no_model_data[k] = no_model_data[k].to(device)
 
-        if gen_data is not None:
-            for k in gen_data:
-                if isinstance(gen_data[k], torch.Tensor):
-                    gen_data[k] = gen_data[k].to(device)
+        for k in gen_data:
+            gen_data[k] = gen_data[k].to(device)
 
         return model_data, no_model_data, gen_data
     
-    def move_to_memory(self, model_data, no_model_data, gen_data=None):
+    def move_to_memory(self, model_data, no_model_data, gen_data):
         device = torch.device("cpu")
         model_data_cpu, no_model_data_cpu = {}, {}
         for k in model_data:
-            if isinstance(model_data[k], torch.Tensor):
-                model_data_cpu[k] = model_data[k].to(device)
-            else:
-                model_data_cpu[k] = model_data[k]
-
-        # no_model_data can contain metadata fields like `span_offsets` (list),
-        # so only tensors should be moved to cpu.
+            model_data_cpu[k] = model_data[k].to(device)
+        
         for k in no_model_data:
-            if isinstance(no_model_data[k], torch.Tensor):
-                no_model_data_cpu[k] = no_model_data[k].to(device)
-            else:
-                no_model_data_cpu[k] = no_model_data[k]
+            no_model_data_cpu[k] = no_model_data[k].to(device)
 
-        if gen_data is not None and "attention_mask" in gen_data and isinstance(gen_data["attention_mask"], torch.Tensor):
-            prompt_attention_mask = gen_data["attention_mask"].to(device)
-        else:
-            prompt_attention_mask = model_data_cpu["attention_mask"]
-        offset_mapping = no_model_data_cpu.get("offset_mapping")
-        span_offsets = no_model_data_cpu.get("span_offsets")
+        prompt_attention_mask = gen_data["attention_mask"].to(device)
         
         for idx in range(model_data_cpu["input_ids"].size(0)):
-            sample_offset_mapping = offset_mapping[idx] if isinstance(offset_mapping, torch.Tensor) else None
-            sample_span_offsets = span_offsets[idx] if isinstance(span_offsets, list) else None
             if self.args.model_type in ["gpt2", "llama"]:
                 e = self.data(model_data_cpu["input_ids"][idx], model_data_cpu["attention_mask"][idx], model_data_cpu["position_ids"][idx],
-                              no_model_data_cpu["label"][idx], no_model_data_cpu["loss_mask"][idx], prompt_attention_mask[idx],
-                              sample_offset_mapping, sample_span_offsets)
+                              no_model_data_cpu["label"][idx], no_model_data_cpu["loss_mask"][idx], prompt_attention_mask[idx])
             else:
                 e = self.data(model_data_cpu["input_ids"][idx], model_data_cpu["attention_mask"][idx],
-                              no_model_data_cpu["label"][idx], no_model_data_cpu["loss_mask"][idx], prompt_attention_mask[idx],
-                              sample_offset_mapping, sample_span_offsets)
+                              no_model_data_cpu["label"][idx], no_model_data_cpu["loss_mask"][idx], prompt_attention_mask[idx])
             self.replay_memory.append(e)

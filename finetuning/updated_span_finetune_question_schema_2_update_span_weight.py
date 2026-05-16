@@ -20,7 +20,6 @@ except ImportError:
 configure_project_paths()
 
 from arguments import get_args
-from data_utils.lm_datasets import extract_text2cypher_span_offsets
 from distillm import ReplayBuffer, SampleGenerator
 try:
     from .span_finetune import (
@@ -458,43 +457,6 @@ def compute_multi_layer_span_context_relation_loss(
     return rel_total / valid_layers
 
 
-def build_generated_no_model_batch(tokenizer, model_batch, labels):
-    input_ids = model_batch["input_ids"]
-    attention_mask = model_batch["attention_mask"]
-    max_length = input_ids.size(1)
-    device = labels.device
-
-    full_texts = []
-    spans_offsets = []
-    for sample_input_ids, sample_attention_mask, sample_labels in zip(input_ids, attention_mask, labels):
-        valid_len = int(sample_attention_mask.long().sum().item())
-        full_ids = sample_input_ids[:valid_len].detach().cpu().tolist()
-        response_ids = sample_labels[sample_labels != -100].detach().cpu().tolist()
-
-        full_text = tokenizer.decode(full_ids, skip_special_tokens=True)
-        response_str = tokenizer.decode(response_ids, skip_special_tokens=True)
-        full_texts.append(full_text)
-
-        spans_offsets.append(extract_text2cypher_span_offsets(full_text, response_str))
-
-    offset_mapping = tokenizer(
-        full_texts,
-        return_offsets_mapping=True,
-        truncation=True,
-        max_length=max_length,
-        padding="max_length",
-        add_special_tokens=False,
-        return_tensors="pt",
-    )["offset_mapping"].to(device)
-
-    return {
-        "label": labels,
-        "loss_mask": (labels != -100).float(),
-        "span_offsets": spans_offsets,
-        "offset_mapping": offset_mapping,
-    }
-
-
 def finetune(
     args,
     tokenizer: AutoTokenizer,
@@ -593,31 +555,18 @@ def finetune(
                 rand_value = np.random.uniform(0, 1)
                 if "mixed" in args.type and rand_value < args.mixed_alpha:
                     model_batch = student_generator.run_sample(model, gen_data)
-                    no_model_batch = build_generated_no_model_batch(
-                        tokenizer,
-                        model_batch,
-                        model_batch.pop("no_model_batch"),
-                    )
-                    replay_buffer.move_to_memory(model_batch, no_model_batch, gen_data)
+                    no_model_batch["label"] = model_batch.pop("no_model_batch")
+                    replay_buffer.move_to_memory(model_batch, no_model_batch)
                     model_batch, no_model_batch, gen_data = replay_buffer.sample()
-                    model_batch, no_model_batch, gen_data = replay_buffer.move_to_device(
-                        model_batch,
-                        no_model_batch,
-                        gen_data,
-                        device,
-                    )
+                    model_batch, no_model_batch = replay_buffer.move_to_device(model_batch, no_model_batch, gen_data, device)
                 elif "adaptive" in args.type and (
                     rand_value < samp_threshold
                     or (rand_value < adaptive_threshold and len(replay_buffer) < args.capacity)
                 ):
                     model_batch = student_generator.run_sample(model, gen_data)
-                    no_model_batch = build_generated_no_model_batch(
-                        tokenizer,
-                        model_batch,
-                        model_batch.pop("no_model_batch"),
-                    )
+                    no_model_batch["label"] = model_batch.pop("no_model_batch")
                     if args.model_type in ["opt"]:
-                        model_batch.pop("position_ids", None)
+                        model_batch.pop("position_ids")
                     replay_buffer.move_to_memory(model_batch, no_model_batch, gen_data)
                 elif "adaptive" in args.type and rand_value < adaptive_threshold:
                     model_batch, no_model_batch, gen_data = replay_buffer.sample()
@@ -638,20 +587,17 @@ def finetune(
 
                 distil_loss = get_distil_loss(args, teacher_logits, no_model_batch, logits)
                 distil_loss = torch.nan_to_num(distil_loss, nan=0.0, posinf=100.0, neginf=0.0)
-                if "offset_mapping" in no_model_batch and "span_offsets" in no_model_batch:
-                    rel_loss = compute_multi_layer_span_context_relation_loss(
-                        tokenizer,
-                        model_batch["input_ids"],
-                        model_batch["attention_mask"],
-                        no_model_batch["label"],
-                        student_captured_hidden,
-                        teacher_outputs.hidden_states,
-                        no_model_batch["offset_mapping"],
-                        no_model_batch["span_offsets"],
-                        args,
-                    )
-                else:
-                    rel_loss = logits.new_tensor(0.0)
+                rel_loss = compute_multi_layer_span_context_relation_loss(
+                    tokenizer,
+                    model_batch["input_ids"],
+                    model_batch["attention_mask"],
+                    no_model_batch["label"],
+                    student_captured_hidden,
+                    teacher_outputs.hidden_states,
+                    no_model_batch["offset_mapping"],
+                    no_model_batch["span_offsets"],
+                    args,
+                )
 
                 weighted_rel_loss = grounding_cfg["w_rel"] * rel_loss
                 weighted_grounding_loss = torch.nan_to_num(
