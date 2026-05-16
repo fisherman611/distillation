@@ -28,7 +28,7 @@ uv sync
 source .venv/bin/activate
 
 HF_TOKEN="${HF_TOKEN:-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}"
-hf auth login --token "${HF_TOKEN}"
+hf auth login --force --token "${HF_TOKEN}"
 
 bash running.sh \
   --filter part_2 \
