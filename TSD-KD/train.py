@@ -1,17 +1,38 @@
-from datasets import Dataset, load_dataset
+from datasets import load_dataset
 from trl import GKDConfig
 from DistillTrainer import DistillTrainer
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
 )
+import argparse
 import torch, os, wandb
 import torch.distributed as dist
-import sys
-beta=float(sys.argv[1])
-lmbda=float(sys.argv[2])
-threshold=float(sys.argv[3])
-model_name=str(sys.argv[4])
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Train TSD-KD on Cypherbench.")
+    parser.add_argument("--beta", type=float, default=0.9)
+    parser.add_argument("--lmbda", type=float, default=1.0)
+    parser.add_argument("--threshold", type=float, default=0.1)
+    parser.add_argument("--model-name", dest="model_name", type=str, default="Qwen/Qwen2.5-1.5B-Instruct")
+    parser.add_argument("--indirect-kd-alpha", dest="indirect_kd_alpha", type=float, default=0.1)
+    parser.add_argument("--seq-kd", dest="seq_kd", action="store_true")
+    parser.add_argument(
+        "--teacher-model-name",
+        dest="teacher_model_name",
+        type=str,
+        default="Qwen/Qwen3-4B-Instruct-2507",
+    )
+    return parser.parse_args()
+
+
+args_cli = parse_args()
+beta = args_cli.beta
+lmbda = args_cli.lmbda
+threshold = args_cli.threshold
+model_name = args_cli.model_name
+indirect_kd_alpha = args_cli.indirect_kd_alpha
 
 import torch._dynamo
 torch._dynamo.config.disable = True
@@ -24,7 +45,7 @@ tokenizer = AutoTokenizer.from_pretrained(model_name)
 tokenizer.pad_token = tokenizer.eos_token
 tokenizer.padding_side = 'left'
 
-teacher_model_name = "Qwen/Qwen2.5-14B-Instruct"
+teacher_model_name = args_cli.teacher_model_name
 attn = "sdpa"
 # The model to optimise
 model = AutoModelForCausalLM.from_pretrained(model_name, attn_implementation=attn, torch_dtype=torch.bfloat16, pad_token_id=tokenizer.pad_token_id, trust_remote_code=True)#.to(f"cuda:{local_rank}")
@@ -38,18 +59,32 @@ print(teacher_model.lm_head.weight.shape)
 
 assert model.lm_head.weight.shape[0] == teacher_model.lm_head.weight.shape[0]
 
-ds = load_dataset("Minsang/TSD-KD-Qwen2.5-1.5B-Instruct-Gen")["train"].train_test_split(test_size=0.01)
+dataset_root = os.environ.get(
+    "DATASET_ROOT",
+    "hf://datasets/fisherman611/text_to_cypher_distillation/Cypherbench",
+)
+ds = load_dataset(
+    "json",
+    data_files={
+        "train": f"{dataset_root}/train.jsonl",
+        "validation": f"{dataset_root}/dev.jsonl",
+        "test": f"{dataset_root}/test.jsonl",
+    },
+)
 
 def add_messages(example):
+    instruction = example["system_prompt"].strip() + "\n\n" + example["user_prompt"].strip()
     return {
         "messages": [
-            {"role": "user", "content": example["instruction"]},
+            {"role": "user", "content": instruction},
             {"role": "assistant", "content": example["response"]}
         ]
     }
     
-train_dataset = ds["train"].map(add_messages).remove_columns(["prompt"])
-eval_dataset = ds["test"].map(add_messages).remove_columns(["prompt"])
+train_dataset = ds["train"].map(add_messages, remove_columns=ds["train"].column_names)
+eval_dataset = ds["validation"].map(add_messages, remove_columns=ds["validation"].column_names)
+print(train_dataset[0])
+print(eval_dataset[0])
 
 fsdp_config={'limit_all_gathers': True, 'forward_prefetch': True, 'backward_prefetch': 'backward_pre'}
 training_args = GKDConfig(
@@ -74,6 +109,7 @@ training_args = GKDConfig(
                         lmbda=lmbda,
                         beta=beta,
                         temperature=1.0,
+                        seq_kd=args_cli.seq_kd,
                         )
 
 
@@ -85,5 +121,6 @@ trainer = DistillTrainer(
     train_dataset=train_dataset,
     eval_dataset=eval_dataset,
     token_entropy_percentile_threshold=threshold,
+    indirect_kd_alpha=indirect_kd_alpha,
 )
 trainer.train()
