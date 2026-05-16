@@ -32,7 +32,7 @@ hf auth login --token "${HF_TOKEN}"
 
 bash running.sh \
   --filter part_3 \
-  --gpus 5 \
+  --gpus 2 \
   --gpus-per-job 1 \
   --infer-after-train \
   --infer-db full \
