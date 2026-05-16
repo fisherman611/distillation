@@ -6,7 +6,7 @@ from transformers import (
     AutoTokenizer,
 )
 import argparse
-import torch, os, wandb
+import torch, os
 import torch.distributed as dist
 
 
@@ -105,7 +105,7 @@ training_args = GKDConfig(
                         bf16=True, 
                         max_length=1024,
                         save_total_limit=3,
-                        report_to='wandb',
+                        report_to=[],
                         lmbda=lmbda,
                         beta=beta,
                         temperature=1.0,

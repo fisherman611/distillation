@@ -19,6 +19,8 @@ else
   GPUS_PER_NODE=1
 fi
 MASTER_PORT="${RUN_MASTER_PORT:-29500}"
+export WANDB_DISABLED="${WANDB_DISABLED:-true}"
+export WANDB_MODE="${WANDB_MODE:-disabled}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
