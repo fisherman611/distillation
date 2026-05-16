@@ -647,15 +647,18 @@ if [[ "${INFER_AFTER_TRAIN}" -eq 1 ]]; then
   append_log "${RUN_LOG}" "Infer after train: script=${INFER_SCRIPT}, benchmarks=${INFER_BENCHMARK_DISPLAY}, db=${INFER_DB}, data_source=${INFER_DATA_SOURCE}, batch_size=${INFER_BATCH_SIZE}, max_length=${INFER_MAX_LENGTH}, limit=${INFER_LIMIT:-<none>}, output_root=${INFER_OUTPUT_ROOT}"
 fi
 
-launch_counter=0
 failures=0
-base_port=0
+
+random_master_port() {
+  # Keep ports in unprivileged range and away from very low ephemeral values.
+  echo $((10000 + (RANDOM * 32768 + RANDOM) % 50000))
+}
 
 run_script_once() {
   local script="$1"
   local gpu_chunk="$2"
   local attempt="$3"
-  local port=$((base_port + launch_counter))
+  local port
   local rel_script
   local job_id
   local job_log
@@ -663,7 +666,7 @@ run_script_once() {
   rel_script="$(rel_path "${script}")"
   job_id="$(script_id "${script}")"
   job_log="${JOB_LOG_DIR}/${job_id}.attempt${attempt}.log"
-  launch_counter=$((launch_counter + 1))
+  port="$(random_master_port)"
 
   echo "[launch] ${rel_script}"
   echo "         GPUs: ${gpu_chunk} | port: ${port} | attempt: ${attempt}"
@@ -763,14 +766,14 @@ else
       local chunk_idx="$2"
       local script="${SCRIPTS[$run_idx]}"
       local attempt=$((JOB_ATTEMPTS[run_idx] + 1))
-      local port=$((base_port + launch_counter))
+      local port
       local rel_script
       local job_id
       local job_log
       local pid
 
       JOB_ATTEMPTS[run_idx]="${attempt}"
-      launch_counter=$((launch_counter + 1))
+      port="$(random_master_port)"
       rel_script="$(rel_path "${script}")"
       job_id="$(script_id "${script}")"
       job_log="${JOB_LOG_DIR}/${job_id}.attempt${attempt}.log"
