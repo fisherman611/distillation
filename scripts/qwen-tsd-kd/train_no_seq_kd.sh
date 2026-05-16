@@ -27,6 +27,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 cd "$REPO_ROOT"
 
+if ! command -v accelerate >/dev/null 2>&1; then
+  echo "Missing dependency: accelerate is not installed or not on PATH." >&2
+  echo "Install project dependencies in the active environment: bash install.sh" >&2
+  echo "Or minimally install accelerate: python -m pip install accelerate" >&2
+  exit 127
+fi
+
 accelerate launch \
   --config_file TSD-KD/accelerate_ddp_config.yaml \
   --num_processes "${GPUS_PER_NODE}" \
