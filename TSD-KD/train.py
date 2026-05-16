@@ -18,6 +18,18 @@ def parse_args():
     parser.add_argument("--model-name", dest="model_name", type=str, default="Qwen/Qwen2.5-1.5B-Instruct")
     parser.add_argument("--indirect-kd-alpha", dest="indirect_kd_alpha", type=float, default=0.1)
     parser.add_argument("--seq-kd", dest="seq_kd", action="store_true")
+    parser.add_argument("--output-dir", dest="output_dir", type=str, default="tsd-kd-Qwen2.5-1.5B-Instruct")
+    parser.add_argument("--max-train-samples", dest="max_train_samples", type=int, default=None)
+    parser.add_argument("--max-eval-samples", dest="max_eval_samples", type=int, default=None)
+    parser.add_argument("--max-steps", dest="max_steps", type=int, default=-1)
+    parser.add_argument("--num-train-epochs", dest="num_train_epochs", type=float, default=3)
+    parser.add_argument("--per-device-train-batch-size", dest="per_device_train_batch_size", type=int, default=4)
+    parser.add_argument("--per-device-eval-batch-size", dest="per_device_eval_batch_size", type=int, default=4)
+    parser.add_argument("--gradient-accumulation-steps", dest="gradient_accumulation_steps", type=int, default=4)
+    parser.add_argument("--learning-rate", dest="learning_rate", type=float, default=5e-6)
+    parser.add_argument("--logging-steps", dest="logging_steps", type=int, default=10)
+    parser.add_argument("--no-load-best-model-at-end", dest="load_best_model_at_end", action="store_false")
+    parser.set_defaults(load_best_model_at_end=True)
     parser.add_argument(
         "--teacher-model-name",
         dest="teacher_model_name",
@@ -42,7 +54,8 @@ def is_main_process():
 
 local_rank = int(os.environ.get('LOCAL_RANK', '0'))
 tokenizer = AutoTokenizer.from_pretrained(model_name)
-tokenizer.pad_token = tokenizer.eos_token
+if tokenizer.pad_token is None:
+    tokenizer.pad_token = tokenizer.eos_token
 tokenizer.padding_side = 'left'
 
 teacher_model_name = args_cli.teacher_model_name
@@ -52,6 +65,17 @@ model = AutoModelForCausalLM.from_pretrained(model_name, attn_implementation=att
 
 # The teacher model to calculate the KL divergence against
 teacher_model = AutoModelForCausalLM.from_pretrained(teacher_model_name, attn_implementation=attn, torch_dtype=torch.bfloat16, trust_remote_code=True)#.to(f"cuda:{local_rank}")
+
+def align_model_special_tokens(model, tokenizer):
+    for config in (model.config, getattr(model, "generation_config", None)):
+        if config is None:
+            continue
+        config.pad_token_id = tokenizer.pad_token_id
+        config.eos_token_id = tokenizer.eos_token_id
+        config.bos_token_id = tokenizer.bos_token_id
+
+align_model_special_tokens(model, tokenizer)
+align_model_special_tokens(teacher_model, tokenizer)
 model.resize_token_embeddings(teacher_model.lm_head.weight.shape[0])
 
 print(model.lm_head.weight.shape)
@@ -72,6 +96,13 @@ ds = load_dataset(
     },
 )
 
+raw_train_dataset = ds["train"]
+raw_eval_dataset = ds["validation"]
+if args_cli.max_train_samples is not None:
+    raw_train_dataset = raw_train_dataset.select(range(min(args_cli.max_train_samples, len(raw_train_dataset))))
+if args_cli.max_eval_samples is not None:
+    raw_eval_dataset = raw_eval_dataset.select(range(min(args_cli.max_eval_samples, len(raw_eval_dataset))))
+
 def add_messages(example):
     instruction = example["system_prompt"].strip() + "\n\n" + example["user_prompt"].strip()
     return {
@@ -81,26 +112,28 @@ def add_messages(example):
         ]
     }
     
-train_dataset = ds["train"].map(add_messages, remove_columns=ds["train"].column_names)
-eval_dataset = ds["validation"].map(add_messages, remove_columns=ds["validation"].column_names)
+train_dataset = raw_train_dataset.map(add_messages, remove_columns=raw_train_dataset.column_names)
+eval_dataset = raw_eval_dataset.map(add_messages, remove_columns=raw_eval_dataset.column_names)
+
 print(train_dataset[0])
 print(eval_dataset[0])
 
 fsdp_config={'limit_all_gathers': True, 'forward_prefetch': True, 'backward_prefetch': 'backward_pre'}
 training_args = GKDConfig(
-                        output_dir=f"tsd-kd-Qwen2.5-1.5B-Instruct",
-                        logging_steps=10, 
-                        num_train_epochs=3,
+                        output_dir=args_cli.output_dir,
+                        logging_steps=args_cli.logging_steps,
+                        num_train_epochs=args_cli.num_train_epochs,
+                        max_steps=args_cli.max_steps,
                         warmup_ratio=0.1,
-                        per_device_eval_batch_size=4,
-                        per_device_train_batch_size=4,
-                        gradient_accumulation_steps=4,
+                        per_device_eval_batch_size=args_cli.per_device_eval_batch_size,
+                        per_device_train_batch_size=args_cli.per_device_train_batch_size,
+                        gradient_accumulation_steps=args_cli.gradient_accumulation_steps,
                         gradient_checkpointing=False,
-                        learning_rate=5e-6,
+                        learning_rate=args_cli.learning_rate,
                         eval_strategy='epoch',
                         save_strategy="epoch",
                          metric_for_best_model="eval_loss",
-                        load_best_model_at_end=True,
+                        load_best_model_at_end=args_cli.load_best_model_at_end,
                         lr_scheduler_type="cosine",
                         bf16=True, 
                         max_length=1024,
