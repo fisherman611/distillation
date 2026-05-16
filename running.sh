@@ -649,7 +649,7 @@ fi
 
 launch_counter=0
 failures=0
-base_port=29600
+base_port=0
 
 run_script_once() {
   local script="$1"
