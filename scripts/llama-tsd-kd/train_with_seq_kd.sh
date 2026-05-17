@@ -4,7 +4,11 @@ threshold=0.1
 model_name=meta-llama/Llama-3.2-1B-Instruct
 indirect_kd_alpha=0.1
 teacher_model_name=meta-llama/Meta-Llama-3-8B-Instruct
+teacher_peft_path="${TEACHER_PEFT_PATH:-hf://fisherman611/text-to-cypher-distillation/finetune/llama3/sft_8B/e5-bs2-lr1e-05-G8-N1-NN1-lora-32-64-0.1/2130}"
 output_dir="${OUTPUT_DIR:-results/tsd-kd/llama/with_seq_kd}"
+train_batch_size="${TRAIN_BATCH_SIZE:-8}"
+eval_batch_size="${EVAL_BATCH_SIZE:-16}"
+grad_acc="${GRAD_ACC:-1}"
 
 if [[ -n "${RUN_GPUS:-}" ]]; then
   export CUDA_VISIBLE_DEVICES="${RUN_GPUS}"
@@ -34,6 +38,11 @@ if ! command -v accelerate >/dev/null 2>&1; then
   exit 127
 fi
 
+extra_args=()
+if [[ -n "${teacher_peft_path}" ]]; then
+  extra_args+=(--teacher-peft-path "$teacher_peft_path")
+fi
+
 accelerate launch \
   --config_file TSD-KD/accelerate_ddp_config.yaml \
   --num_processes "${GPUS_PER_NODE}" \
@@ -46,4 +55,8 @@ accelerate launch \
   --indirect-kd-alpha $indirect_kd_alpha \
   --teacher-model-name $teacher_model_name \
   --output-dir "$output_dir" \
+  --per-device-train-batch-size "$train_batch_size" \
+  --per-device-eval-batch-size "$eval_batch_size" \
+  --gradient-accumulation-steps "$grad_acc" \
+  "${extra_args[@]}" \
   --seq-kd

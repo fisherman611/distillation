@@ -8,6 +8,7 @@ from transformers import (
 import argparse
 import torch, os
 import torch.distributed as dist
+from huggingface_hub import snapshot_download
 
 
 def parse_args():
@@ -36,6 +37,13 @@ def parse_args():
         type=str,
         default="Qwen/Qwen3-4B-Instruct-2507",
     )
+    parser.add_argument(
+        "--teacher-peft-path",
+        dest="teacher_peft_path",
+        type=str,
+        default=None,
+        help="Optional LoRA path for teacher model. Supports local path, HF repo id, or hf://<owner>/<repo>/<subfolder>.",
+    )
     return parser.parse_args()
 
 
@@ -52,6 +60,34 @@ torch._dynamo.config.disable = True
 def is_main_process():
     return not dist.is_initialized() or dist.get_rank() == 0
 
+def resolve_peft_source(source: str) -> str:
+    raw = str(source).strip()
+    if os.path.isdir(raw):
+        return raw
+
+    normalized = raw.rstrip("/")
+    if normalized.startswith("hf://"):
+        content = normalized[len("hf://"):].strip("/")
+        parts = [p for p in content.split("/") if p]
+        if len(parts) < 2:
+            raise ValueError(
+                f"Invalid hf:// path '{source}'. Expected hf://<owner>/<repo>/<optional/subfolder>"
+            )
+        repo_id = f"{parts[0]}/{parts[1]}"
+        subfolder = "/".join(parts[2:]) if len(parts) > 2 else None
+        if not subfolder:
+            return repo_id
+
+        token = os.getenv("HF_READ_TOKEN") or os.getenv("HF_TOKEN")
+        snapshot_dir = snapshot_download(
+            repo_id=repo_id,
+            allow_patterns=[f"{subfolder}/*", f"{subfolder}/**"],
+            token=token,
+        )
+        return os.path.join(snapshot_dir, subfolder)
+
+    return raw
+
 local_rank = int(os.environ.get('LOCAL_RANK', '0'))
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 if tokenizer.pad_token is None:
@@ -65,6 +101,14 @@ model = AutoModelForCausalLM.from_pretrained(model_name, attn_implementation=att
 
 # The teacher model to calculate the KL divergence against
 teacher_model = AutoModelForCausalLM.from_pretrained(teacher_model_name, attn_implementation=attn, torch_dtype=torch.bfloat16, trust_remote_code=True)#.to(f"cuda:{local_rank}")
+if args_cli.teacher_peft_path:
+    from peft import PeftModel
+
+    resolved_teacher_peft_path = resolve_peft_source(args_cli.teacher_peft_path)
+    if is_main_process():
+        print(f"Loading teacher LoRA from: {resolved_teacher_peft_path}")
+    teacher_model = PeftModel.from_pretrained(teacher_model, resolved_teacher_peft_path)
+    teacher_model = teacher_model.merge_and_unload()
 
 def align_model_special_tokens(model, tokenizer):
     for config in (model.config, getattr(model, "generation_config", None)):
