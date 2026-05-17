@@ -31,7 +31,7 @@ CKPT="${CKPT:-meta-llama/Llama-3.2-1B-Instruct}"
 # Hyper-parameters
 BATCH_SIZE=8
 LR=0.0001
-GRAD_ACC=1
+GRAD_ACC=2
 EVAL_BATCH_SIZE=16
 EPOCHS=5
 

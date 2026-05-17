@@ -8,7 +8,7 @@ teacher_peft_path="${TEACHER_PEFT_PATH:-hf://fisherman611/text-to-cypher-distill
 output_dir="${OUTPUT_DIR:-results/tsd-kd/llama/no_seq_kd}"
 train_batch_size="${TRAIN_BATCH_SIZE:-8}"
 eval_batch_size="${EVAL_BATCH_SIZE:-16}"
-grad_acc="${GRAD_ACC:-1}"
+grad_acc="${GRAD_ACC:-2}"
 
 if [[ -n "${RUN_GPUS:-}" ]]; then
   export CUDA_VISIBLE_DEVICES="${RUN_GPUS}"

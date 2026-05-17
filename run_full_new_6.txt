@@ -32,8 +32,8 @@ hf auth login --force --token "${HF_TOKEN}"
 
 bash running.sh \
   --filter part_6 \
-  --gpus 6,7 \
-  --gpus-per-job 2 \
+  --gpus 0 \
+  --gpus-per-job 1 \
   --infer-after-train \
   --infer-db full \
   --infer-batch-size 16
