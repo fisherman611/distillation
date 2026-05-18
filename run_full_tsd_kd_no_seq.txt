@@ -1,0 +1,207 @@
+#!/bin/bash
+#SBATCH --account=le-lab
+#SBATCH --gres=gpu:L40S:8
+#SBATCH --mem=256GB
+#SBATCH --time=72:00:00
+#SBATCH --partition=general
+#SBATCH --output=run_tsd_kd_no_seq-%j.out
+#SBATCH --mail-type=END,FAIL
+#SBATCH --mail-user=tucnguye@iu.edu
+
+set -euo pipefail
+
+REPO_DIR="${REPO_DIR:-.}"
+cd "${REPO_DIR}"
+git pull --ff-only
+
+eval "$(conda shell.bash hook)"
+
+ENV_NAME="distillation"
+if ! conda env list | awk '{print $1}' | grep -qx "${ENV_NAME}"; then
+  conda create -n "${ENV_NAME}" python=3.10 -y
+fi
+conda activate "${ENV_NAME}"
+
+python -m pip install --upgrade pip
+python -m pip install uv
+uv sync
+source .venv/bin/activate
+
+HF_TOKEN="${HF_TOKEN:-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}"
+hf auth login --force --token "${HF_TOKEN}"
+
+export HF_HUB_DISABLE_XET="${HF_HUB_DISABLE_XET:-1}"
+export WANDB_DISABLED="${WANDB_DISABLED:-true}"
+export WANDB_MODE="${WANDB_MODE:-disabled}"
+export PYTHONPATH="$(pwd)"
+
+RUN_TAG="${RUN_TAG:-${SLURM_JOB_ID:-$(date +%Y%m%d_%H%M%S)}}"
+MODE="${MODE:-parallel}"
+
+QWEN_GPUS="${QWEN_GPUS:-4}"
+LLAMA_GPUS="${LLAMA_GPUS:-5}"
+QWEN_INFER_GPU="${QWEN_INFER_GPU:-${QWEN_GPUS%%,*}}"
+LLAMA_INFER_GPU="${LLAMA_INFER_GPU:-${LLAMA_GPUS%%,*}}"
+
+QWEN_MODEL_NAME="${QWEN_MODEL_NAME:-Qwen/Qwen3-0.6B}"
+LLAMA_MODEL_NAME="${LLAMA_MODEL_NAME:-meta-llama/Llama-3.2-1B-Instruct}"
+QWEN_TEACHER_MODEL_NAME="${QWEN_TEACHER_MODEL_NAME:-Qwen/Qwen3-4B-Instruct-2507}"
+LLAMA_TEACHER_MODEL_NAME="${LLAMA_TEACHER_MODEL_NAME:-meta-llama/Meta-Llama-3-8B-Instruct}"
+QWEN_TEACHER_PEFT_PATH="${QWEN_TEACHER_PEFT_PATH:-hf://fisherman611/text-to-cypher-models/e5-bs2-lr1e-05-G8-N2-NN1-lora-32-64-0.1/1065}"
+LLAMA_TEACHER_PEFT_PATH="${LLAMA_TEACHER_PEFT_PATH:-hf://fisherman611/text-to-cypher-distillation/finetune/llama3/sft_8B/e5-bs2-lr1e-05-G8-N1-NN1-lora-32-64-0.1/2130}"
+
+QWEN_OUTPUT_DIR="${QWEN_OUTPUT_DIR:-results/tsd-kd/qwen/no_seq_kd/${RUN_TAG}}"
+LLAMA_OUTPUT_DIR="${LLAMA_OUTPUT_DIR:-results/tsd-kd/llama/no_seq_kd/${RUN_TAG}}"
+
+INFER_OUTPUT_ROOT="${INFER_OUTPUT_ROOT:-results/infer/tsd-kd/no_seq_kd/${RUN_TAG}}"
+INFER_BATCH_SIZE="${INFER_BATCH_SIZE:-16}"
+INFER_DB="${INFER_DB:-full}"
+INFER_DATA_SOURCE="${INFER_DATA_SOURCE:-auto}"
+INFER_BENCHMARKS="${INFER_BENCHMARKS:-Cypherbench Mind_the_query Neo4j_Text2Cypher}"
+
+latest_checkpoint_dir() {
+  local output_dir="$1"
+  python - "${output_dir}" <<'PY'
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+markers = {
+    "adapter_config.json",
+    "config.json",
+    "model.safetensors",
+    "pytorch_model.bin",
+    "adapter_model.bin",
+    "adapter_model.safetensors",
+}
+candidates = []
+if root.is_dir():
+    for child in (root, *root.rglob("*")):
+        if child.is_dir() and any((child / marker).exists() for marker in markers):
+            name = child.name
+            step = int(name.split("-")[-1]) if name.startswith("checkpoint-") and name.split("-")[-1].isdigit() else -1
+            candidates.append((step, child.stat().st_mtime, child))
+if candidates:
+    print(max(candidates, key=lambda item: (item[0], item[1]))[2])
+PY
+}
+
+infer_max_length_for() {
+  local family="$1"
+  local benchmark="$2"
+
+  case "${family}:${benchmark}" in
+    qwen:Cypherbench) printf '1034' ;;
+    qwen:Neo4j_Text2Cypher) printf '3092' ;;
+    qwen:Mind_the_query) printf '2427' ;;
+    llama:Cypherbench) printf '1053' ;;
+    llama:Neo4j_Text2Cypher) printf '2884' ;;
+    llama:Mind_the_query) printf '2445' ;;
+    *) printf '1024' ;;
+  esac
+}
+
+run_infer_family() {
+  local family="$1"
+  local model_name="$2"
+  local ckpt_path="$3"
+  local infer_gpu="$4"
+
+  echo "[${family}] Inference checkpoint: ${ckpt_path}"
+  echo "[${family}] Inference GPU: ${infer_gpu}"
+
+  for benchmark in ${INFER_BENCHMARKS}; do
+    local max_length
+    local output_path
+
+    max_length="$(infer_max_length_for "${family}" "${benchmark}")"
+    output_path="${INFER_OUTPUT_ROOT}/${family}/${benchmark}/${INFER_DB}_cyphers_result.json"
+    mkdir -p "$(dirname "${output_path}")"
+
+    echo "[${family}] Infer ${benchmark} db=${INFER_DB} max_length=${max_length}"
+    CUDA_VISIBLE_DEVICES="${infer_gpu}" \
+    python infer.py \
+      --benchmark "${benchmark}" \
+      --db "${INFER_DB}" \
+      --data_source "${INFER_DATA_SOURCE}" \
+      --model "${model_name}" \
+      --ckpt_path "${ckpt_path}" \
+      --device cuda \
+      --batch-size "${INFER_BATCH_SIZE}" \
+      --max-length "${max_length}" \
+      --output_path "${output_path}"
+  done
+}
+
+run_family() {
+  local family="$1"
+  local gpus="$2"
+  local infer_gpu="$3"
+  local model_name="$4"
+  local teacher_model_name="$5"
+  local teacher_peft_path="$6"
+  local output_dir="$7"
+  local script_path="scripts/${family}-tsd-kd/train_no_seq_kd.sh"
+  local ckpt_path
+
+  echo "[${family}] Train TSD-KD no_seq"
+  echo "[${family}] GPUs: ${gpus}"
+  echo "[${family}] Student: ${model_name}"
+  echo "[${family}] Teacher: ${teacher_model_name}"
+  echo "[${family}] Teacher PEFT: ${teacher_peft_path}"
+  echo "[${family}] Output: ${output_dir}"
+
+  RUN_GPUS="${gpus}" \
+  MODEL_NAME="${model_name}" \
+  TEACHER_MODEL_NAME="${teacher_model_name}" \
+  TEACHER_PEFT_PATH="${teacher_peft_path}" \
+  OUTPUT_DIR="${output_dir}" \
+  RUN_MASTER_PORT="$((10000 + RANDOM % 50000))" \
+  bash "${script_path}"
+
+  ckpt_path="$(latest_checkpoint_dir "${output_dir}")"
+  if [[ -z "${ckpt_path}" ]]; then
+    echo "[${family}] No checkpoint found under ${output_dir}" >&2
+    return 1
+  fi
+
+  run_infer_family "${family}" "${model_name}" "${ckpt_path}" "${infer_gpu}"
+
+  echo "[${family}] Done"
+  echo "[${family}] Checkpoint: ${ckpt_path}"
+  echo "[${family}] Inference outputs: ${INFER_OUTPUT_ROOT}/${family}"
+}
+
+echo "Run tag: ${RUN_TAG}"
+echo "Mode: ${MODE}"
+echo "Qwen GPUs: ${QWEN_GPUS}"
+echo "Llama GPUs: ${LLAMA_GPUS}"
+echo "Infer output root: ${INFER_OUTPUT_ROOT}"
+
+case "${MODE}" in
+  parallel)
+    run_family qwen "${QWEN_GPUS}" "${QWEN_INFER_GPU}" "${QWEN_MODEL_NAME}" "${QWEN_TEACHER_MODEL_NAME}" "${QWEN_TEACHER_PEFT_PATH}" "${QWEN_OUTPUT_DIR}" &
+    qwen_pid="$!"
+    run_family llama "${LLAMA_GPUS}" "${LLAMA_INFER_GPU}" "${LLAMA_MODEL_NAME}" "${LLAMA_TEACHER_MODEL_NAME}" "${LLAMA_TEACHER_PEFT_PATH}" "${LLAMA_OUTPUT_DIR}" &
+    llama_pid="$!"
+
+    status=0
+    if ! wait "${qwen_pid}"; then
+      status=1
+    fi
+    if ! wait "${llama_pid}"; then
+      status=1
+    fi
+    exit "${status}"
+    ;;
+  sequential)
+    run_family qwen "${QWEN_GPUS}" "${QWEN_INFER_GPU}" "${QWEN_MODEL_NAME}" "${QWEN_TEACHER_MODEL_NAME}" "${QWEN_TEACHER_PEFT_PATH}" "${QWEN_OUTPUT_DIR}"
+    run_family llama "${LLAMA_GPUS}" "${LLAMA_INFER_GPU}" "${LLAMA_MODEL_NAME}" "${LLAMA_TEACHER_MODEL_NAME}" "${LLAMA_TEACHER_PEFT_PATH}" "${LLAMA_OUTPUT_DIR}"
+    ;;
+  *)
+    echo "MODE must be parallel or sequential" >&2
+    exit 1
+    ;;
+esac
+
+echo "All TSD-KD no_seq jobs finished."
