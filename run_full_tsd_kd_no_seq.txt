@@ -16,7 +16,7 @@ git pull --ff-only
 
 eval "$(conda shell.bash hook)"
 
-ENV_NAME="distillation"
+ENV_NAME="distillation_1"
 if ! conda env list | awk '{print $1}' | grep -qx "${ENV_NAME}"; then
   conda create -n "${ENV_NAME}" python=3.13 -y
 fi
