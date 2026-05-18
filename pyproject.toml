@@ -1,40 +1,29 @@
 [project]
-name = "text2cypher-distillation-draft"
+name = "amid"
 version = "0.1.0"
 description = "Add your description here"
-readme = "README.md"
-requires-python = ">=3.13,<3.14"
+readme = "readme.md"
+requires-python = "==3.10.*"
+
+
 dependencies = [
-    "accelerate>=1.13.0",
-    "datasets>=4.8.4",
-    "deepspeed>=0.18.9",
-    "huggingface-hub>=1.11.0",
-    "neo4j>=6.1.0",
-    "nltk>=3.9.4",
-    "numerize>=0.12",
-    "numpy>=2.4.4",
-    "peft>=0.19.1",
-    "protobuf>=7.34.1",
-    "python-dotenv>=1.0.0",
-    "rich>=15.0.0",
-    "rouge-score>=0.1.2",
-    "sentencepiece>=0.2.1",
-    "torch==2.8.0+cu128",
-    "torchaudio==2.8.0+cu128",
-    "torchtyping>=0.1.5",
-    "torchvision==0.23.0+cu128",
-    "tqdm>=4.67.3",
+    "datasets",
+    "peft==0.18.1",
     "transformers==4.57.3",
     "trl==0.21.0",
+    "typer>=0.15.2",
     "wandb",
+    "yq>=3.4.3",
+    "deepspeed",
+    "nltk",
+    "numerize",
+    "torch==2.9.1",
+    "rouge-score",
+    "rich",
+    "setuptools"
 ]
 
-[[tool.uv.index]]
-name = "pytorch-cu128"
-url = "https://download.pytorch.org/whl/cu128"
-explicit = true
-
-[tool.uv.sources]
-torch = { index = "pytorch-cu128" }
-torchaudio = { index = "pytorch-cu128" }
-torchvision = { index = "pytorch-cu128" }
+[tool.uv]
+index-url = "https://pypi.org/simple"
+extra-index-url = ["https://download.pytorch.org/whl/cu128"]
+index-strategy = "unsafe-best-match"
