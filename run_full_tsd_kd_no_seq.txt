@@ -28,7 +28,7 @@ uv sync
 source .venv/bin/activate
 
 HF_TOKEN="${HF_TOKEN:-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}"
-hf auth login --force --token "${HF_TOKEN}"
+hf auth login --token "${HF_TOKEN}"
 
 export HF_HUB_DISABLE_XET="${HF_HUB_DISABLE_XET:-1}"
 export WANDB_DISABLED="${WANDB_DISABLED:-true}"

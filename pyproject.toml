@@ -8,6 +8,7 @@ requires-python = "==3.10.*"
 
 dependencies = [
     "datasets",
+    "huggingface-hub",
     "peft==0.18.1",
     "transformers==4.57.3",
     "trl==0.21.0",
