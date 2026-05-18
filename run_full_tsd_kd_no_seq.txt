@@ -18,9 +18,19 @@ eval "$(conda shell.bash hook)"
 
 ENV_NAME="distillation"
 if ! conda env list | awk '{print $1}' | grep -qx "${ENV_NAME}"; then
-  conda create -n "${ENV_NAME}" python=3.10 -y
+  conda create -n "${ENV_NAME}" python=3.13 -y
 fi
 conda activate "${ENV_NAME}"
+
+python - <<'PY'
+import sys
+
+if sys.version_info[:2] != (3, 13):
+    raise SystemExit(
+        "The distillation conda env must use Python 3.13. "
+        f"Current version: {sys.version.split()[0]}"
+    )
+PY
 
 python -m pip install --upgrade pip
 python -m pip install uv
@@ -192,7 +202,9 @@ case "${MODE}" in
     if ! wait "${llama_pid}"; then
       status=1
     fi
-    exit "${status}"
+    if [[ "${status}" -ne 0 ]]; then
+      exit "${status}"
+    fi
     ;;
   sequential)
     run_family qwen "${QWEN_GPUS}" "${QWEN_INFER_GPU}" "${QWEN_MODEL_NAME}" "${QWEN_TEACHER_MODEL_NAME}" "${QWEN_TEACHER_PEFT_PATH}" "${QWEN_OUTPUT_DIR}"
@@ -205,3 +217,13 @@ case "${MODE}" in
 esac
 
 echo "All TSD-KD no_seq jobs finished."
+
+UPLOAD_SCRIPT="$(pwd)/upload_to_hf.py"
+if [[ -f "${UPLOAD_SCRIPT}" ]]; then
+  echo "[upload] Uploading results to Hugging Face..."
+  python "${UPLOAD_SCRIPT}"
+  echo "[upload-done] Results uploaded to Hugging Face."
+else
+  echo "Upload script does not exist: ${UPLOAD_SCRIPT}" >&2
+  exit 1
+fi
