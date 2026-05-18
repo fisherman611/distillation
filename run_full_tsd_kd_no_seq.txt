@@ -22,16 +22,6 @@ if ! conda env list | awk '{print $1}' | grep -qx "${ENV_NAME}"; then
 fi
 conda activate "${ENV_NAME}"
 
-python - <<'PY'
-import sys
-
-if sys.version_info[:2] != (3, 13):
-    raise SystemExit(
-        "The distillation conda env must use Python 3.13. "
-        f"Current version: {sys.version.split()[0]}"
-    )
-PY
-
 python -m pip install --upgrade pip
 python -m pip install uv
 uv sync
