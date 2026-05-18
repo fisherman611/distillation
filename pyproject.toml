@@ -20,9 +20,13 @@ dependencies = [
     "rouge-score>=0.1.2",
     "sentencepiece>=0.2.1",
     "torch==2.8.0+cu128",
+    "torchaudio==2.8.0+cu128",
     "torchtyping>=0.1.5",
+    "torchvision==0.23.0+cu128",
     "tqdm>=4.67.3",
-    "transformers>=5.6.1",
+    "transformers==4.57.3",
+    "trl==0.21.0",
+    "wandb",
 ]
 
 [[tool.uv.index]]
@@ -32,3 +36,5 @@ explicit = true
 
 [tool.uv.sources]
 torch = { index = "pytorch-cu128" }
+torchaudio = { index = "pytorch-cu128" }
+torchvision = { index = "pytorch-cu128" }
