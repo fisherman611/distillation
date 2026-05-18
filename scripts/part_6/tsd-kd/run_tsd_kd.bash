@@ -97,7 +97,8 @@ else
 fi
 
 MASTER_PORT="${RUN_MASTER_PORT:-29500}"
-export WANDB_DISABLED="${WANDB_DISABLED:-true}"
+# Avoid flaky hf-xet downloader errors on some environments.
+export HF_HUB_DISABLE_XET="${HF_HUB_DISABLE_XET:-1}"
 export WANDB_MODE="${WANDB_MODE:-disabled}"
 
 if ! command -v accelerate >/dev/null 2>&1; then

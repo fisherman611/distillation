@@ -97,10 +97,10 @@ tokenizer.padding_side = 'left'
 teacher_model_name = args_cli.teacher_model_name
 attn = "sdpa"
 # The model to optimise
-model = AutoModelForCausalLM.from_pretrained(model_name, attn_implementation=attn, torch_dtype=torch.bfloat16, pad_token_id=tokenizer.pad_token_id, trust_remote_code=True)#.to(f"cuda:{local_rank}")
+model = AutoModelForCausalLM.from_pretrained(model_name, attn_implementation=attn, dtype=torch.bfloat16, pad_token_id=tokenizer.pad_token_id, trust_remote_code=True)#.to(f"cuda:{local_rank}")
 
 # The teacher model to calculate the KL divergence against
-teacher_model = AutoModelForCausalLM.from_pretrained(teacher_model_name, attn_implementation=attn, torch_dtype=torch.bfloat16, trust_remote_code=True)#.to(f"cuda:{local_rank}")
+teacher_model = AutoModelForCausalLM.from_pretrained(teacher_model_name, attn_implementation=attn, dtype=torch.bfloat16, trust_remote_code=True)#.to(f"cuda:{local_rank}")
 if args_cli.teacher_peft_path:
     from peft import PeftModel
 
