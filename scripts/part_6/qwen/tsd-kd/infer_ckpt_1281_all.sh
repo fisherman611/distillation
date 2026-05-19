@@ -12,7 +12,7 @@ OUTPUT_ROOT="${OUTPUT_ROOT:-results/infer/tsd-kd/qwen/no_seq_kd/20260518_145716/
 BATCH_SIZE="${BATCH_SIZE:-16}"
 FLUSH_EVERY="${FLUSH_EVERY:-${BATCH_SIZE}}"
 DB="${DB:-full}"
-DATA_SOURCE="${DATA_SOURCE:-auto}"
+DATA_SOURCE="${DATA_SOURCE:-hf}"
 DEVICE="${DEVICE:-cuda}"
 PYTHON_BIN="${PYTHON_BIN:-python}"
 BENCHMARKS="${BENCHMARKS:-Cypherbench Mind_the_query Neo4j_Text2Cypher}"
@@ -47,7 +47,7 @@ for benchmark in ${BENCHMARKS}; do
   mkdir -p "${output_dir}"
 
   cmd=(
-    "${PYTHON_BIN}" infer.py
+    "${PYTHON_BIN}" infer_tsd_kd.py
     --benchmark "${benchmark}"
     --db "${DB}"
     --data_source "${DATA_SOURCE}"
