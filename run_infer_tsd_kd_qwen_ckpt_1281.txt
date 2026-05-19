@@ -1,0 +1,32 @@
+#!/bin/bash
+#SBATCH --account=le-lab
+#SBATCH --gres=gpu:L40S:1
+#SBATCH --mem=128GB
+#SBATCH --time=24:00:00
+#SBATCH --partition=general
+#SBATCH --output=run_infer_tsd_kd_qwen_ckpt_1281-%j.out
+#SBATCH --mail-type=END,FAIL
+#SBATCH --mail-user=tucnguye@iu.edu
+
+set -euo pipefail
+
+REPO_DIR="${REPO_DIR:-.}"
+cd "${REPO_DIR}"
+
+eval "$(conda shell.bash hook)"
+
+ENV_NAME="${ENV_NAME:-distillation_2}"
+conda activate "${ENV_NAME}"
+
+if [[ -d ".venv" ]]; then
+  source .venv/bin/activate
+fi
+
+export HF_HUB_DISABLE_XET="${HF_HUB_DISABLE_XET:-1}"
+export WANDB_DISABLED="${WANDB_DISABLED:-true}"
+export WANDB_MODE="${WANDB_MODE:-disabled}"
+export PYTHONPATH="$(pwd)"
+
+BATCH_SIZE="${BATCH_SIZE:-16}" \
+FLUSH_EVERY="${FLUSH_EVERY:-${BATCH_SIZE:-16}}" \
+bash scripts/part_6/qwen/tsd-kd/infer_ckpt_1281_all.sh

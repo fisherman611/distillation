@@ -91,6 +91,12 @@ def parse_args():
         "--batch-size", type=int, default=1, help="Batch size for generation"
     )
     parser.add_argument(
+        "--flush-every",
+        type=int,
+        default=None,
+        help="Write partial JSON output after this many processed samples. Defaults to no incremental flush.",
+    )
+    parser.add_argument(
         "--temperature", type=float, default=0.5, help="Temperature for sampling"
     )
     parser.add_argument(
@@ -514,10 +520,13 @@ def run_batch_inference(
     top_k=0,
     shared_schema_str=None,
     schema_map=None,
+    output_path=None,
+    flush_every=None,
 ):
     results = []
     errors = []
     run_name = db if not is_full_db(db) else "full"
+    next_flush_at = flush_every if flush_every else None
 
     progress_bar = tqdm(total=len(test_data), desc=f"Running {benchmark}/{run_name}")
 
@@ -596,15 +605,43 @@ def run_batch_inference(
             for sample in batch_samples:
                 qid = sample.qid if sample.qid is not None else sample.instance_id
                 errors.append({"qid": qid, "error": str(batch_e)})
-                
+
         progress_bar.update(len(batch_samples))
+        processed_count = min(i + len(batch_samples), len(test_data))
+        if output_path and flush_every and processed_count >= next_flush_at:
+            write_output_snapshot(results, output_path)
+            while next_flush_at <= processed_count:
+                next_flush_at += flush_every
         
     logger.info(f"Finished. Success: {len(results) - len(errors)}, Failed: {len(errors)}")
     return results, errors
 
 
+def compact_output(results):
+    output = []
+    for r in results:
+        output.append({
+            "question": r["question"],
+            "graph": r["graph"],
+            "gold_cypher": r["sample"].get("gold_cypher"),
+            "pred_cypher": r["cypher"],
+        })
+    return output
+
+
+def write_output_snapshot(results, output_path):
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = output_path.with_name(f"{output_path.name}.tmp")
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        json.dump(compact_output(results), f, indent=4, ensure_ascii=False)
+    os.replace(tmp_path, output_path)
+
+
 def main():
     args = parse_args()
+    if args.flush_every is not None and args.flush_every <= 0:
+        raise ValueError("--flush-every must be a positive integer")
 
     subset_test_data, schema_str, schema_map = load_schema_and_subset_test_data(
         args.benchmark,
@@ -622,6 +659,12 @@ def main():
     print(f"Running benchmark={args.benchmark}, db={db_name}, samples={len(subset_test_data)}")
     print(f"Using batch_size={args.batch_size}")
 
+    output_path = (
+        Path(args.output_path)
+        if args.output_path
+        else Path(RESULTS_DIR) / args.benchmark / f"{db_name}_cyphers_result_{args.model.split('/')[-1]}_distillm_adaptive_srkl_kd0.7_wrel1.6.json"
+    )
+
     results, errors = run_batch_inference(
         test_data=subset_test_data,
         benchmark=args.benchmark,
@@ -635,16 +678,9 @@ def main():
         top_k=args.top_k,
         shared_schema_str=schema_str,
         schema_map=schema_map,
+        output_path=output_path,
+        flush_every=args.flush_every,
     )
-
-    output = []
-    for r in results:
-        output.append({
-            "question": r["question"],
-            "graph": r["graph"],
-            "gold_cypher": r["sample"].get("gold_cypher"),
-            "pred_cypher": r["cypher"]
-        })
 
     os.makedirs(Path(RESULTS_DIR) / args.benchmark, exist_ok=True)
     
@@ -672,14 +708,7 @@ def main():
     # output_path = Path(RESULTS_DIR) / args.benchmark / f"{db_name}_cyphers_result_{args.model.split('/')[-1]}_distill_fdd_srkl_updated_1.json" 
     # output_path = Path(RESULTS_DIR) / args.benchmark / f"{db_name}_cyphers_result_{args.model.split('/')[-1]}_distill_fdd_srkl_updated_3_0.json" 
     # output_path = Path(RESULTS_DIR) / args.benchmark / f"{db_name}_cyphers_result_{args.model.split('/')[-1]}_distillm.json" 
-    output_path = (
-        Path(args.output_path)
-        if args.output_path
-        else Path(RESULTS_DIR) / args.benchmark / f"{db_name}_cyphers_result_{args.model.split('/')[-1]}_distillm_adaptive_srkl_kd0.7_wrel1.6.json"
-    )
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(output, f, indent=4, ensure_ascii=False)
+    write_output_snapshot(results, output_path)
 
     print(f"Saved results to: {output_path}")
 
