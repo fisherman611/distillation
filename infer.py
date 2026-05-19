@@ -344,25 +344,45 @@ def init_model(model_name_or_path, ckpt_path=None, ckpt_revision=None, device=No
         safetensor_path = _resolve_ckpt_file(ckpt_path, "model.safetensors", ckpt_revision)
         bin_path = _resolve_ckpt_file(ckpt_path, "pytorch_model.bin", ckpt_revision)
 
+        def _load_weights_tolerant(state_dict, source_label: str):
+            incompatible = model.load_state_dict(state_dict, strict=False)
+            missing_keys = set(incompatible.missing_keys)
+            unexpected_keys = set(incompatible.unexpected_keys)
+
+            # Tied embeddings can omit lm_head in some checkpoints.
+            allowed_missing = {"lm_head.weight"}
+            bad_missing = sorted(missing_keys - allowed_missing)
+            bad_unexpected = sorted(unexpected_keys)
+            if bad_missing or bad_unexpected:
+                raise RuntimeError(
+                    f"Failed loading checkpoint weights from {ckpt_path}.\n"
+                    f"Missing keys: {sorted(missing_keys)}\n"
+                    f"Unexpected keys: {sorted(unexpected_keys)}\n"
+                    "This usually means --ckpt_path is not a compatible full checkpoint directory."
+                )
+
+            if hasattr(model, "tie_weights"):
+                model.tie_weights()
+            if missing_keys:
+                print(f"Warning: missing keys tolerated for {source_label}: {sorted(missing_keys)}")
+
         if safetensor_path:
             state_dict = safetensors.torch.load_file(safetensor_path)
             try:
-                model.load_state_dict(state_dict)
+                _load_weights_tolerant(state_dict, "model.safetensors")
             except RuntimeError as e:
                 raise RuntimeError(
                     f"Failed loading checkpoint weights from {ckpt_path}: {e}\n"
-                    "This usually means --ckpt_path is not a full model checkpoint directory.\n"
                     "For LoRA checkpoints, pass the folder containing adapter_config.json.\n"
                     "For full checkpoints, pass the folder containing config.json and full model weights."
                 ) from e
             print("Loaded full model weights from safetensors.")
         elif bin_path:
             try:
-                model.load_state_dict(torch.load(bin_path, map_location="cpu"))
+                _load_weights_tolerant(torch.load(bin_path, map_location="cpu"), "pytorch_model.bin")
             except RuntimeError as e:
                 raise RuntimeError(
                     f"Failed loading checkpoint weights from {ckpt_path}: {e}\n"
-                    "This usually means --ckpt_path is not a full model checkpoint directory.\n"
                     "For LoRA checkpoints, pass the folder containing adapter_config.json.\n"
                     "For full checkpoints, pass the folder containing config.json and full model weights."
                 ) from e
