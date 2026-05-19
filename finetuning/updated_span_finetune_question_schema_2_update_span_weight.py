@@ -457,6 +457,39 @@ def compute_multi_layer_span_context_relation_loss(
     return rel_total / valid_layers
 
 
+def _build_generated_span_metadata(tokenizer, model_batch, no_model_batch, max_length):
+    input_ids = model_batch["input_ids"]
+    labels = no_model_batch["label"]
+    device = input_ids.device
+    pad_id = tokenizer.pad_token_id
+    if pad_id is None:
+        pad_id = tokenizer.eos_token_id
+
+    full_texts = []
+    span_offsets = []
+    for sample_input_ids, sample_labels in zip(input_ids, labels):
+        valid_input_ids = sample_input_ids[sample_input_ids != pad_id].detach().cpu().tolist()
+        response_ids = sample_labels[sample_labels != -100].detach().cpu().tolist()
+
+        full_text = tokenizer.decode(valid_input_ids, skip_special_tokens=True)
+        response_text = tokenizer.decode(response_ids, skip_special_tokens=True)
+        full_texts.append(full_text)
+        span_offsets.append(extract_text2cypher_span_offsets(full_text, response_text))
+
+    encoded = tokenizer(
+        full_texts,
+        return_offsets_mapping=True,
+        truncation=True,
+        max_length=max_length,
+        padding="max_length",
+        add_special_tokens=False,
+        return_tensors="pt",
+    )
+    no_model_batch["offset_mapping"] = encoded["offset_mapping"].to(device)
+    no_model_batch["span_offsets"] = span_offsets
+    return no_model_batch
+
+
 def finetune(
     args,
     tokenizer: AutoTokenizer,
@@ -556,15 +589,23 @@ def finetune(
                 if "mixed" in args.type and rand_value < args.mixed_alpha:
                     model_batch = student_generator.run_sample(model, gen_data)
                     no_model_batch["label"] = model_batch.pop("no_model_batch")
-                    replay_buffer.move_to_memory(model_batch, no_model_batch)
+                    no_model_batch = _build_generated_span_metadata(
+                        tokenizer, model_batch, no_model_batch, args.max_length
+                    )
+                    replay_buffer.move_to_memory(model_batch, no_model_batch, gen_data)
                     model_batch, no_model_batch, gen_data = replay_buffer.sample()
-                    model_batch, no_model_batch = replay_buffer.move_to_device(model_batch, no_model_batch, gen_data, device)
+                    model_batch, no_model_batch, gen_data = replay_buffer.move_to_device(
+                        model_batch, no_model_batch, gen_data, device
+                    )
                 elif "adaptive" in args.type and (
                     rand_value < samp_threshold
                     or (rand_value < adaptive_threshold and len(replay_buffer) < args.capacity)
                 ):
                     model_batch = student_generator.run_sample(model, gen_data)
                     no_model_batch["label"] = model_batch.pop("no_model_batch")
+                    no_model_batch = _build_generated_span_metadata(
+                        tokenizer, model_batch, no_model_batch, args.max_length
+                    )
                     if args.model_type in ["opt"]:
                         model_batch.pop("position_ids")
                     replay_buffer.move_to_memory(model_batch, no_model_batch, gen_data)
@@ -608,7 +649,7 @@ def finetune(
                 )
                 weighted_grounding_loss = weighted_grounding_loss.clamp(min=0.0, max=MAX_GROUNDING_LOSS)
 
-                # distil_loss = distil_loss + weighted_grounding_loss
+                distil_loss = distil_loss + weighted_grounding_loss
                 loss = (1 - args.kd_ratio) * lm_loss + args.kd_ratio * distil_loss
             else:
                 distil_loss = logits.new_tensor(0.0)
