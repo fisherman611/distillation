@@ -286,6 +286,12 @@ def init_model(model_name_or_path, ckpt_path=None, ckpt_revision=None, device=No
             is_peft = True
             resolved_ckpt_source, resolved_ckpt_revision = _resolve_ckpt_dir(ckpt_path, ckpt_revision)
             print("This is LoRA finetune")
+        elif _local_or_hf_has_file(ckpt_path, "adapter_model.safetensors", ckpt_revision) or _local_or_hf_has_file(ckpt_path, "adapter_model.bin", ckpt_revision):
+            raise RuntimeError(
+                "Found adapter weights but missing adapter_config.json at --ckpt_path. "
+                "Please point --ckpt_path to the exact LoRA checkpoint directory (the one containing adapter_config.json), "
+                "not its parent folder."
+            )
         elif _local_or_hf_has_file(ckpt_path, "config.json", ckpt_revision):
             # If it's a full HF checkpoint we should just load directly from it
             resolved_ckpt_source, resolved_ckpt_revision = _resolve_ckpt_dir(ckpt_path, ckpt_revision)
@@ -340,10 +346,26 @@ def init_model(model_name_or_path, ckpt_path=None, ckpt_revision=None, device=No
 
         if safetensor_path:
             state_dict = safetensors.torch.load_file(safetensor_path)
-            model.load_state_dict(state_dict)
+            try:
+                model.load_state_dict(state_dict)
+            except RuntimeError as e:
+                raise RuntimeError(
+                    f"Failed loading checkpoint weights from {ckpt_path}: {e}\n"
+                    "This usually means --ckpt_path is not a full model checkpoint directory.\n"
+                    "For LoRA checkpoints, pass the folder containing adapter_config.json.\n"
+                    "For full checkpoints, pass the folder containing config.json and full model weights."
+                ) from e
             print("Loaded full model weights from safetensors.")
         elif bin_path:
-            model.load_state_dict(torch.load(bin_path, map_location="cpu"))
+            try:
+                model.load_state_dict(torch.load(bin_path, map_location="cpu"))
+            except RuntimeError as e:
+                raise RuntimeError(
+                    f"Failed loading checkpoint weights from {ckpt_path}: {e}\n"
+                    "This usually means --ckpt_path is not a full model checkpoint directory.\n"
+                    "For LoRA checkpoints, pass the folder containing adapter_config.json.\n"
+                    "For full checkpoints, pass the folder containing config.json and full model weights."
+                ) from e
             print("Loaded full model weights from pytorch_model.bin.")
         else:
             print(
