@@ -4,6 +4,7 @@ from typing import Dict, Optional
 
 import torch
 from tqdm.auto import tqdm
+from transformers import GenerationConfig
 
 from infer import (
     get_question_and_schema,
@@ -82,6 +83,12 @@ def parse_args():
     parser.add_argument("--top-p", type=float, default=0.95, help="Top-p for sampling")
     parser.add_argument("--top-k", type=int, default=0, help="Top-k for sampling")
     parser.add_argument(
+        "--generation-mode",
+        default="train_eval",
+        choices=["train_eval", "legacy"],
+        help="Generation mode. 'train_eval' matches DistillTrainer generation behavior.",
+    )
+    parser.add_argument(
         "--enable-thinking-template",
         action="store_true",
         help="Allow tokenizer chat templates that support thinking to enable it. Default is no-think.",
@@ -133,6 +140,7 @@ def generate_response_batch_tsd_kd(
     top_p=0.95,
     top_k=0,
     enable_thinking_template=False,
+    generation_mode: str = "train_eval",
 ):
     texts = [
         apply_tsd_kd_chat_template(tokenizer, messages, enable_thinking_template)
@@ -143,16 +151,39 @@ def generate_response_batch_tsd_kd(
     inputs = tokenizer(texts, return_tensors="pt", padding=True).to(model.device)
 
     with torch.inference_mode():
-        outputs = model.generate(
-            **inputs,
-            max_new_tokens=max_length,
-            do_sample=True,
-            temperature=temperature,
-            top_p=top_p,
-            top_k=top_k,
-        )
+        if generation_mode == "train_eval":
+            generation_config = GenerationConfig(
+                max_new_tokens=max_length,
+                temperature=temperature,
+                do_sample=True,
+                top_k=0,
+                use_cache=True,
+                pad_token_id=tokenizer.pad_token_id,
+            )
+            if (
+                hasattr(model, "generation_config")
+                and getattr(model.generation_config, "eos_token_id", None) is not None
+            ):
+                generation_config.eos_token_id = model.generation_config.eos_token_id
 
-    generated_ids = outputs[:, inputs["input_ids"].shape[-1]:]
+            outputs = model.generate(
+                input_ids=inputs["input_ids"],
+                attention_mask=inputs.get("attention_mask"),
+                generation_config=generation_config,
+                return_dict_in_generate=True,
+            )
+            sequences = outputs.sequences
+        else:
+            sequences = model.generate(
+                **inputs,
+                max_new_tokens=max_length,
+                do_sample=True,
+                temperature=temperature,
+                top_p=top_p,
+                top_k=top_k,
+            )
+
+    generated_ids = sequences[:, inputs["input_ids"].shape[-1]:]
     return tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
 
 
@@ -169,6 +200,7 @@ def run_batch_inference_tsd_kd(
     top_k: int,
     prompts_dir: str,
     enable_thinking_template: bool = False,
+    generation_mode: str = "train_eval",
     shared_schema_str: Optional[str] = None,
     schema_map: Optional[Dict[str, Optional[str]]] = None,
     output_path: Optional[Path] = None,
@@ -205,6 +237,7 @@ def run_batch_inference_tsd_kd(
                 top_p=top_p,
                 top_k=top_k,
                 enable_thinking_template=enable_thinking_template,
+                generation_mode=generation_mode,
             )
         except Exception as batch_e:
             batch_error = str(batch_e)
@@ -280,6 +313,7 @@ def main():
 
     print("Using TSD-KD prompt format: one user message containing system_prompt + user_prompt")
     print(f"Tokenizer thinking template enabled: {args.enable_thinking_template}")
+    print(f"Generation mode: {args.generation_mode}")
     print(f"Running benchmark={args.benchmark}, db={db_name}, samples={len(subset_test_data)}")
     print(f"Using batch_size={args.batch_size}, flush_every={args.flush_every}")
 
@@ -296,6 +330,7 @@ def main():
         top_k=args.top_k,
         prompts_dir=args.prompts_dir,
         enable_thinking_template=args.enable_thinking_template,
+        generation_mode=args.generation_mode,
         shared_schema_str=schema_str,
         schema_map=schema_map,
         output_path=output_path,
