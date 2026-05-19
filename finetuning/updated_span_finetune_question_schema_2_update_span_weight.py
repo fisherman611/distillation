@@ -21,6 +21,7 @@ configure_project_paths()
 
 from arguments import get_args
 from distillm import ReplayBuffer, SampleGenerator
+from data_utils.lm_datasets import extract_text2cypher_span_offsets
 try:
     from .span_finetune import (
         evaluate,
