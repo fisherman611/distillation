@@ -214,7 +214,7 @@ def add_distillm_args(parser: argparse.ArgumentParser):
 
     # skew kld
     group.add_argument("--skew-alpha", type=float, default=0.1)
-    
+
     # student generation
     group.add_argument("--student-gen", action="store_true")
     group.add_argument("--gen-top-p", type=float, default=1.0)
@@ -262,6 +262,15 @@ def add_distillm_args(parser: argparse.ArgumentParser):
     return parser
 
 
+def add_ab_args(parser: argparse.ArgumentParser):
+    group = parser.add_argument_group('ab', 'ab configurations')
+
+    group.add_argument("--ab_alpha", "--ab-alpha", dest="ab_alpha", type=float, default=0.5)
+    group.add_argument("--ab_beta", "--ab-beta", dest="ab_beta", type=float, default=0.5)
+
+    return parser
+
+
 def add_gen_args(parser: argparse.ArgumentParser):
     group = parser.add_argument_group('generation', 'generation configurations')
     
@@ -290,6 +299,17 @@ def add_peft_args(parser: argparse.ArgumentParser):
     return parser
 
 
+def add_amid_args(parser: argparse.ArgumentParser):
+    group = parser.add_argument_group('amid', 'amid configurations')
+
+    group.add_argument("--amid-div-name", "--amid_div_name", dest="amid_div_name", type=str, default="fkl")
+    group.add_argument("--amid-div-order", "--amid_div_order", dest="amid_div_order", type=str, default="pr")
+    group.add_argument("--amid-alpha", "--amid_alpha", dest="amid_alpha", type=float, default=0.5)
+    group.add_argument("--amid-lam", "--amid_lam", dest="amid_lam", type=float, default=0.5)
+
+    return parser
+
+
 def get_args():
     parser = argparse.ArgumentParser()
     parser = add_model_args(parser)
@@ -302,6 +322,8 @@ def get_args():
     parser = add_gen_args(parser)
     parser = add_peft_args(parser)
     parser = deepspeed.add_config_arguments(parser)
+    parser = add_ab_args(parser)
+    parser = add_amid_args(parser)
     
     args, unknown = parser.parse_known_args()
     

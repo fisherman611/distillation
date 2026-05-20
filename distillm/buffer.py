@@ -20,10 +20,10 @@ class ReplayBuffer:
         self.bs = args.batch_size
         if args.model_type in ["gpt2", "llama"]:
             self.data = namedtuple("Generation", \
-               field_names=["input_ids", "attention_mask", "position_ids", "label", "loss_mask", "prompt_attention_mask"])
+               field_names=["input_ids", "attention_mask", "position_ids", "label", "loss_mask"])
         else:
             self.data = namedtuple("Generation", \
-               field_names=["input_ids", "attention_mask", "label", "loss_mask", "prompt_attention_mask"])
+               field_names=["input_ids", "attention_mask", "label", "loss_mask"])
             
     def __len__(self):
         return len(self.replay_memory)
@@ -34,7 +34,6 @@ class ReplayBuffer:
         attention_mask = torch.stack([d.attention_mask for d in data], dim=0)
         label = torch.stack([d.label for d in data], dim=0)
         loss_mask = torch.stack([d.loss_mask for d in data], dim=0)
-        prompt_attention_mask = torch.stack([d.prompt_attention_mask for d in data], dim=0)
         
         if self.args.model_type in ["gpt2", "llama"]:
             position_ids = torch.stack([d.position_ids for d in data], dim=0)
@@ -49,24 +48,19 @@ class ReplayBuffer:
         no_model_data = {
             "label": label, "loss_mask": loss_mask
         }
-        gen_data = {"attention_mask": prompt_attention_mask}
-        
-        return model_data, no_model_data, gen_data
+        return model_data, no_model_data
         
     
-    def move_to_device(self, model_data, no_model_data, gen_data, device):
+    def move_to_device(self, model_data, no_model_data, device):
         for k in model_data:
             model_data[k] = model_data[k].to(device)
 
         for k in no_model_data:
             no_model_data[k] = no_model_data[k].to(device)
 
-        for k in gen_data:
-            gen_data[k] = gen_data[k].to(device)
-
-        return model_data, no_model_data, gen_data
+        return model_data, no_model_data
     
-    def move_to_memory(self, model_data, no_model_data, gen_data):
+    def move_to_memory(self, model_data, no_model_data):
         device = torch.device("cpu")
         model_data_cpu, no_model_data_cpu = {}, {}
         for k in model_data:
@@ -74,14 +68,12 @@ class ReplayBuffer:
         
         for k in no_model_data:
             no_model_data_cpu[k] = no_model_data[k].to(device)
-
-        prompt_attention_mask = gen_data["attention_mask"].to(device)
         
         for idx in range(model_data_cpu["input_ids"].size(0)):
             if self.args.model_type in ["gpt2", "llama"]:
                 e = self.data(model_data_cpu["input_ids"][idx], model_data_cpu["attention_mask"][idx], model_data_cpu["position_ids"][idx],
-                              no_model_data_cpu["label"][idx], no_model_data_cpu["loss_mask"][idx], prompt_attention_mask[idx])
+                              no_model_data_cpu["label"][idx], no_model_data_cpu["loss_mask"][idx])
             else:
                 e = self.data(model_data_cpu["input_ids"][idx], model_data_cpu["attention_mask"][idx],
-                              no_model_data_cpu["label"][idx], no_model_data_cpu["loss_mask"][idx], prompt_attention_mask[idx])
+                              no_model_data_cpu["label"][idx], no_model_data_cpu["loss_mask"][idx])
             self.replay_memory.append(e)
