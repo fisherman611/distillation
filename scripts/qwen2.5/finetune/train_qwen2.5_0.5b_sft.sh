@@ -22,7 +22,7 @@ DISTRIBUTED_ARGS="--nproc_per_node $GPUS_PER_NODE \
 
 # Paths
 BASE_PATH=.
-DATA_DIR="${DATA_DIR:-hf://fisherman611/text_to_cypher_distillation/benchmarks/Cypherbench/qwen2.5}"
+DATA_DIR="${DATA_DIR:-hf://fisherman611/text_to_cypher_processed_data/Cypherbench/qwen2.5}"
 
 # Model
 CKPT_NAME="qwen2.5-0.5B"
