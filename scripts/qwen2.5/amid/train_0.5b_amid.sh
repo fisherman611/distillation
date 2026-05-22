@@ -21,13 +21,13 @@ DISTRIBUTED_ARGS="--nproc_per_node $GPUS_PER_NODE \
 
 # model
 BASE_PATH=.
-CKPT_NAME="qwen3-0.6B"
-CKPT="${CKPT:-Qwen/Qwen3-0.6B}"
+CKPT_NAME="qwen2.5-0.5B"
+CKPT="${CKPT:-Qwen/Qwen2.5-0.5B}"
 TEACHER_CKPT_NAME="qwen3-4B"
 TEACHER_CKPT="${TEACHER_CKPT:-Qwen/Qwen3-4B-Instruct-2507}"
 TEACHER_PEFT_PATH="${TEACHER_PEFT_PATH:-hf://fisherman611/text-to-cypher-models/e5-bs2-lr1e-05-G8-N2-NN1-lora-32-64-0.1/1065}"
 # data
-DATA_DIR="${DATA_DIR:-hf://fisherman611/text-to-cypher-processed-data/Cypherbench/qwen}"
+DATA_DIR="${DATA_DIR:-hf://fisherman611/text-to-cypher-processed-data/Cypherbench/qwen2.5}"
 # hp
 BATCH_SIZE=${BATCH_SIZE:-8}
 LR=${LR:-1e-4}
@@ -46,7 +46,7 @@ AMID_DIV_ORDER=${AMID_DIV_ORDER:-pr}
 AMID_ALPHA=${AMID_ALPHA:-0.5}
 AMID_LAM=${AMID_LAM:-0.5}
 
-SAVE_PATH="${SAVE_PATH:-${BASE_PATH}/results/qwen3/amid/${AMID_DIV_NAME}_${AMID_DIV_ORDER}_${AMID_ALPHA}_${AMID_LAM}_bs${BATCH_SIZE}_lr${LR}}"
+SAVE_PATH="${SAVE_PATH:-${BASE_PATH}/results/qwen2.5/amid/${AMID_DIV_NAME}_${AMID_DIV_ORDER}_${AMID_ALPHA}_${AMID_LAM}_bs${BATCH_SIZE}_lr${LR}}"
 DS_CONFIG="${DS_CONFIG:-${BASE_PATH}/configs/deepspeed/ds_config_fp16.json}"
 
 OPTS=""

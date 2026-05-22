@@ -809,11 +809,12 @@ def finetune(
                 if "mixed" in args.type and rand_value < args.mixed_alpha:
                     model_batch = student_generator.run_sample(model, gen_data)
                     no_model_batch = build_generated_no_model_batch(model_batch.pop("no_model_batch"))
-                    replay_buffer.move_to_memory(model_batch, no_model_batch)
-                    model_batch, no_model_batch = replay_buffer.sample()
-                    model_batch, no_model_batch = replay_buffer.move_to_device(
+                    replay_buffer.move_to_memory(model_batch, no_model_batch, gen_data)
+                    model_batch, no_model_batch, gen_data = replay_buffer.sample()
+                    model_batch, no_model_batch, gen_data = replay_buffer.move_to_device(
                         model_batch,
                         no_model_batch,
+                        gen_data,
                         device,
                     )
                 elif "adaptive" in args.type and (
@@ -824,10 +825,10 @@ def finetune(
                     no_model_batch = build_generated_no_model_batch(model_batch.pop("no_model_batch"))
                     if args.model_type in ["opt"]:
                         model_batch.pop("position_ids", None)
-                    replay_buffer.move_to_memory(model_batch, no_model_batch)
+                    replay_buffer.move_to_memory(model_batch, no_model_batch, gen_data)
                 elif "adaptive" in args.type and rand_value < adaptive_threshold:
-                    model_batch, no_model_batch = replay_buffer.sample()
-                    model_batch, no_model_batch = replay_buffer.move_to_device(model_batch, no_model_batch, device)
+                    model_batch, no_model_batch, gen_data = replay_buffer.sample()
+                    model_batch, no_model_batch, gen_data = replay_buffer.move_to_device(model_batch, no_model_batch, gen_data, device)
                 model.train()
 
             outputs = model(**model_batch, use_cache=False)
