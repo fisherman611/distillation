@@ -53,7 +53,7 @@ from utils import all_gather
 from utils import load_parallel, save_parallel
 from utils import get_tokenizer, get_model, resolve_hf_path, get_generation_eos_token_ids
 
-from distillm import forward_kl, reverse_kl, js_distance, tv_distance
+from distillm import forward_kl, reverse_kl, js_distance, tv_distance, amid
 from distillm import skewed_forward_kl, skewed_reverse_kl, csd
 from distillm import SampleGenerator, ReplayBuffer
 
@@ -237,6 +237,8 @@ def get_distil_loss(args, tokenizer, model, teacher_model, model_batch, no_model
             distil_loss = reverse_kl(logits, teacher_logits, no_model_batch)
         elif "csd" in args.type:
             distil_loss = csd(logits, teacher_logits, no_model_batch)
+        elif "amid" in args.type:
+            distil_loss = amid(logits, teacher_logits, no_model_batch, args)
         else:
             raise NotImplementedError
     return distil_loss
