@@ -16,7 +16,7 @@ from huggingface_hub import HfApi
 api = HfApi()
 
 api.upload_folder(
-    folder_path="results/",
+    folder_path="run_logs/",
     repo_id="fisherman611/text-to-cypher-llama-model",
     repo_type="model",
 )

@@ -54,8 +54,9 @@ from utils import load_parallel, save_parallel
 from utils import get_tokenizer, get_model, resolve_hf_path, get_generation_eos_token_ids
 
 from distillm import forward_kl, reverse_kl, js_distance, tv_distance
-from distillm import skewed_forward_kl, skewed_reverse_kl, csd
+from distillm import skewed_forward_kl, skewed_reverse_kl
 from distillm import SampleGenerator, ReplayBuffer
+from distillm.losses import ab_div, AKL, alphanet, bdkd, amid
 
 from rouge_metric import compute_metrics
 
@@ -137,9 +138,9 @@ def get_learning_rate_scheduler(args, optimizer):
     return lr_scheduler
 
 
-def setup_model_and_optimizer(args, ds_config, device, set_optim=True):
-    # get the model
-    model = get_model(args, device)
+def setup_model_and_optimizer(args, ds_config, device, set_optim=True, model=None):
+    if model is None:
+        model = get_model(args, device)
     # get the optimizer and lr_scheduler
     if set_optim:
         optimizer = get_optimizer(args, model)
@@ -171,6 +172,7 @@ def prepare_dataset(args, tokenizer):
         if not args.slice_data:
             # Full data
             data["train"] = LMTrainDataset(args, tokenizer, args.data_dir, "train", args.train_num, args.train_ratio, rng_sample)
+            print_rank("train num", len(data["train"]))
             data["dev"] = LMTrainDataset(args, tokenizer, args.data_dir, "valid", args.dev_num, args.dev_ratio, rng_sample)
         else:
             # Sliced data for testing
@@ -186,6 +188,19 @@ def prepare_dataset(args, tokenizer):
             data["dev"].move_to_device = full_dev.move_to_device
             if hasattr(full_dev, 'answers'):
                 data["dev"].answers = [full_dev.answers[i] for i in data["dev"].indices]
+    if args.do_eval:
+        if not args.slice_data:
+            data["test"] = LMTrainDataset(args, tokenizer, args.data_dir, "valid", args.dev_num, args.dev_ratio, rng_sample)
+        else:
+            full_test = LMTrainDataset(args, tokenizer, args.data_dir, "valid", args.dev_num, args.dev_ratio, rng_sample)
+            data["test"] = Subset(full_test, range(min(20, len(full_test))))
+            data["test"].collate = full_test.collate
+            data["test"].move_to_device = full_test.move_to_device
+            if hasattr(full_test, 'answers'):
+                data["test"].answers = [full_test.answers[i] for i in data["test"].indices]
+
+    if not args.do_train and not args.do_eval:
+        raise ValueError("Do train and do eval must set one")
 
     # if not args.slice_data:
     #     # Full data
@@ -206,6 +221,29 @@ def prepare_dataset(args, tokenizer):
     return data
 
 
+def unpack_lm_batch(batch):
+    if len(batch) == 3:
+        return batch
+    if len(batch) == 5:
+        model_batch, no_model_batch, gen_data, _, _ = batch
+        return model_batch, no_model_batch, gen_data
+    raise ValueError(f"Unexpected LM batch size: {len(batch)}")
+
+
+def set_default_distil_args(args):
+    defaults = {
+        "ab_alpha": 0.5,
+        "ab_beta": 0.5,
+        "amid_alpha": 0.5,
+        "amid_lam": 0.5,
+        "amid_div_name": "fkl",
+        "amid_div_order": "pr",
+    }
+    for name, value in defaults.items():
+        if not hasattr(args, name):
+            setattr(args, name, value)
+
+
 def pt_loss(args, model, model_batch, no_model_batch):
     loss_mask = (no_model_batch["label"] != -100).int()
     outputs = model(**model_batch, return_dict=True, use_cache=False)
@@ -215,7 +253,8 @@ def pt_loss(args, model, model_batch, no_model_batch):
     return lm_loss
 
 
-def get_distil_loss(args, tokenizer, model, teacher_model, model_batch, no_model_batch, logits):
+def get_distil_loss(args, tokenizer, model, teacher_model, model_batch, no_model_batch, logits, epoch=0):
+    set_default_distil_args(args)
     with torch.no_grad():
         teacher_model.eval()
         teacher_outputs = teacher_model(**model_batch, use_cache=False)
@@ -235,10 +274,20 @@ def get_distil_loss(args, tokenizer, model, teacher_model, model_batch, no_model
             distil_loss = forward_kl(logits, teacher_logits, no_model_batch)
         elif "rkl" in args.type:
             distil_loss = reverse_kl(logits, teacher_logits, no_model_batch)
+        elif "ab" in args.type:
+            distil_loss = ab_div(logits, teacher_logits, no_model_batch, args.ab_alpha, args.ab_beta)
+        elif "bdkd" in args.type:
+            distil_loss = bdkd(logits, teacher_logits, no_model_batch)
+        elif "alphanet" in args.type:
+            distil_loss = alphanet(logits, teacher_logits, no_model_batch, args.ab_alpha, args.ab_beta)
+        elif "akl" in args.type:
+            distil_loss = AKL(teacher_logits, logits, no_model_batch)
+        elif "amid" in args.type:
+            distil_loss = amid(logits, teacher_logits, no_model_batch, args, epoch=epoch)
         elif "csd" in args.type:
             distil_loss = csd(logits, teacher_logits, no_model_batch)
         else:
-            raise NotImplementedError
+            raise ValueError(f"Distillation type {args.type} is not supported yet.")
     return distil_loss
 
 
@@ -319,17 +368,16 @@ def finetune(args, tokenizer: AutoTokenizer, model: deepspeed.DeepSpeedEngine, o
         sampler.set_epoch(epoch)
 
         model.train()
-        for it, (model_batch, no_model_batch, gen_data, _, _) in enumerate(train_dataloader):
+        for it, batch in enumerate(train_dataloader):
+            model_batch, no_model_batch, gen_data = unpack_lm_batch(batch)
             dataset["train"].move_to_device(model_batch, no_model_batch, gen_data, device)
             
             if args.lm_data_dir is not None:
                 try:
-                    pt_model_batch, pt_no_model_batch, pt_gen_data = next(pt_train_iter)
-                    # pt_model_batch, pt_no_model_batch, pt_gen_data = pt_train_iter.next()
+                    pt_model_batch, pt_no_model_batch, pt_gen_data = unpack_lm_batch(next(pt_train_iter))
                 except:
                     pt_train_iter = iter(pt_train_dataloader)
-                    # pt_model_batch, pt_no_model_batch, pt_gen_data = pt_train_iter.next()
-                    pt_model_batch, pt_no_model_batch, pt_gen_data = next(pt_train_iter)
+                    pt_model_batch, pt_no_model_batch, pt_gen_data = unpack_lm_batch(next(pt_train_iter))
                     
                 dataset["pt_train"].move_to_device(pt_model_batch, pt_no_model_batch, pt_gen_data, device)
             
@@ -354,8 +402,8 @@ def finetune(args, tokenizer: AutoTokenizer, model: deepspeed.DeepSpeedEngine, o
                     no_model_batch["label"] = model_batch.pop("no_model_batch")
                     
                     replay_buffer.move_to_memory(model_batch, no_model_batch)
-                    model_batch, no_model_batch, gen_data = replay_buffer.sample()
-                    model_batch, no_model_batch = replay_buffer.move_to_device(model_batch, no_model_batch, gen_data, device)
+                    model_batch, no_model_batch = replay_buffer.sample()
+                    model_batch, no_model_batch = replay_buffer.move_to_device(model_batch, no_model_batch, device)
                     
                 elif "adaptive" in args.type and (r < samp_threshold or (r < adaptive_threshold and len(replay_buffer) < args.capacity)):
 
@@ -365,11 +413,11 @@ def finetune(args, tokenizer: AutoTokenizer, model: deepspeed.DeepSpeedEngine, o
                     if args.model_type in ["opt"]:
                         model_batch.pop('position_ids')
                         
-                    replay_buffer.move_to_memory(model_batch, no_model_batch, gen_data)
+                    replay_buffer.move_to_memory(model_batch, no_model_batch)
                     
                 elif "adaptive" in args.type and r < adaptive_threshold:
-                    model_batch, no_model_batch, gen_data = replay_buffer.sample()
-                    model_batch, no_model_batch, gen_data = replay_buffer.move_to_device(model_batch, no_model_batch, gen_data, device)
+                    model_batch, no_model_batch = replay_buffer.sample()
+                    model_batch, no_model_batch = replay_buffer.move_to_device(model_batch, no_model_batch, device)
                     
                 model.train()
 
@@ -382,7 +430,7 @@ def finetune(args, tokenizer: AutoTokenizer, model: deepspeed.DeepSpeedEngine, o
                 lm_loss = loss_func(logits.float().view(-1, logits.shape[-1]), no_model_batch["label"].view(-1))
             
             if teacher_model is not None:
-                distil_loss = get_distil_loss(args, tokenizer, model, teacher_model, model_batch, no_model_batch, logits)
+                distil_loss = get_distil_loss(args, tokenizer, model, teacher_model, model_batch, no_model_batch, logits, epoch)
                 loss = (1 - args.kd_ratio) * lm_loss + args.kd_ratio * distil_loss
             else:
                 loss = lm_loss
@@ -518,7 +566,8 @@ def evaluate(args, tokenizer, model, dataset: LMTrainDataset, split, epoch, devi
     all_response_ids = []
     
     with torch.no_grad():
-        for it, (model_batch, no_model_batch, gen_data, _, _) in enumerate(tqdm(dataloader, desc="Evaluating", disable=(dist.get_rank() != 0))):
+        for it, batch in enumerate(tqdm(dataloader, desc="Evaluating", disable=(dist.get_rank() != 0))):
+            model_batch, no_model_batch, gen_data = unpack_lm_batch(batch)
             print_rank(f"{it}/{len(dataloader)}")
             dataset.move_to_device(model_batch, no_model_batch, gen_data, device)
             logits = model(**model_batch).logits
@@ -642,15 +691,24 @@ def main():
         if args.eval_interval == -1:
             args.eval_interval = args.train_iters_per_epoch
     
-    model, optimizer, lr_scheduler = setup_model_and_optimizer(args, ds_config, device, set_optim=args.do_train)
-    
     if args.teacher_model_type is None:
         args.teacher_model_type = args.model_type
     
+    model = get_model(args, device)
+
     if args.teacher_model_path is not None:
         teacher_model = get_teacher_model(args, device)
+        model.resize_token_embeddings(teacher_model.config.vocab_size)
     else:
         teacher_model = None
+
+    model, optimizer, lr_scheduler = setup_model_and_optimizer(
+        args,
+        ds_config,
+        device,
+        set_optim=args.do_train,
+        model=model,
+    )
     
     if args.do_train:
         model = finetune(args, tokenizer, model, optimizer, lr_scheduler, dataset, device, teacher_model=teacher_model)
@@ -658,7 +716,6 @@ def main():
     if args.do_eval:
         # evaluate(args, tokenizer, model, dataset["test"], "test", 0, device)
         pass
-        
     
 if __name__ == "__main__":
     main()

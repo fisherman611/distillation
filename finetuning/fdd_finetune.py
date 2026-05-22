@@ -319,8 +319,8 @@ def finetune(args, tokenizer: AutoTokenizer, model: deepspeed.DeepSpeedEngine, o
                     no_model_batch["label"] = model_batch.pop("no_model_batch")
                     
                     replay_buffer.move_to_memory(model_batch, no_model_batch)
-                    model_batch, no_model_batch, gen_data = replay_buffer.sample()
-                    model_batch, no_model_batch = replay_buffer.move_to_device(model_batch, no_model_batch, gen_data, device)
+                    model_batch, no_model_batch = replay_buffer.sample()
+                    model_batch, no_model_batch = replay_buffer.move_to_device(model_batch, no_model_batch, device)
                     
                 elif "adaptive" in args.type and (r < samp_threshold or (r < adaptive_threshold and len(replay_buffer) < args.capacity)):
 
@@ -330,11 +330,11 @@ def finetune(args, tokenizer: AutoTokenizer, model: deepspeed.DeepSpeedEngine, o
                     if args.model_type in ["opt"]:
                         model_batch.pop('position_ids')
                         
-                    replay_buffer.move_to_memory(model_batch, no_model_batch, gen_data)
+                    replay_buffer.move_to_memory(model_batch, no_model_batch)
                     
                 elif "adaptive" in args.type and r < adaptive_threshold:
-                    model_batch, no_model_batch, gen_data = replay_buffer.sample()
-                    model_batch, no_model_batch, gen_data = replay_buffer.move_to_device(model_batch, no_model_batch, gen_data, device)
+                    model_batch, no_model_batch = replay_buffer.sample()
+                    model_batch, no_model_batch = replay_buffer.move_to_device(model_batch, no_model_batch, device)
                     
                 model.train()
 
