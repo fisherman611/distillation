@@ -9,7 +9,7 @@ export CUDA_VISIBLE_DEVICES=$(IFS=,; echo "${GPUS[*]}")
 
 # Distributed args
 MASTER_ADDR=localhost
-MASTER_PORT=66$(($RANDOM%90+10))
+MASTER_PORT=${RUN_MASTER_PORT:-66$(($RANDOM%90+10))}
 NNODES=1
 NODE_RANK=0
 GPUS_PER_NODE=${#GPUS[@]}
@@ -29,7 +29,7 @@ CKPT_NAME="qwen2.5-0.5B"
 CKPT="${CKPT:-Qwen/Qwen2.5-0.5B}"
 
 # Hyper-parameters
-BATCH_SIZE=4
+BATCH_SIZE=2
 LR=0.00005
 GRAD_ACC=4
 EVAL_BATCH_SIZE=16
@@ -98,7 +98,7 @@ export WANDB_DISABLED=True
 export TF_CPP_MIN_LOG_LEVEL=3
 export PYTHONPATH=${BASE_PATH}
 
-CMD="torchrun ${DISTRIBUTED_ARGS} ${BASE_PATH}/finetune.py ${OPTS} $@"
+CMD="torchrun ${DISTRIBUTED_ARGS} ${BASE_PATH}/finetuning/finetune.py ${OPTS} $@"
 
 echo "${CMD}"
 echo "PYTHONPATH=${PYTHONPATH}"
