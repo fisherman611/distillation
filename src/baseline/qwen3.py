@@ -13,6 +13,7 @@ import argparse
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from huggingface_hub import login
 from src.llm_services import parse_json_from_string, parse_llm_response
+from utils import get_generation_eos_token_ids
 
 hf_token = os.getenv("HF_READ_TOKEN")
 if hf_token:
@@ -57,6 +58,10 @@ def generate_response(tokenizer, model, messages, max_length=512, enable_thinkin
 
     inputs = tokenizer(text, return_tensors="pt").to(model.device)
 
+    model_eos_token_ids = None
+    if hasattr(model, "generation_config"):
+        model_eos_token_ids = getattr(model.generation_config, "eos_token_id", None)
+
     with torch.inference_mode():
         outputs = model.generate(
             **inputs,
@@ -64,6 +69,11 @@ def generate_response(tokenizer, model, messages, max_length=512, enable_thinkin
             do_sample=True,
             temperature=0.7,
             top_p=0.7,
+            eos_token_id=get_generation_eos_token_ids(
+                tokenizer,
+                extra_eos_token_ids=model_eos_token_ids,
+            ),
+            pad_token_id=tokenizer.pad_token_id,
         )
 
     generated_ids = outputs[0][inputs["input_ids"].shape[1]:]

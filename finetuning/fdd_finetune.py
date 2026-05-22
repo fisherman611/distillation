@@ -42,7 +42,7 @@ from utils import print_rank, get_rank
 from utils import save_rank
 from utils import all_gather
 from utils import load_parallel, save_parallel
-from utils import get_tokenizer, get_model, resolve_hf_path
+from utils import get_tokenizer, get_model, resolve_hf_path, get_generation_eos_token_ids
 
 from distillm import forward_kl, reverse_kl, js_distance, tv_distance
 from distillm import skewed_forward_kl, skewed_reverse_kl
@@ -476,7 +476,7 @@ def evaluate(args, tokenizer, model, dataset: LMTrainDataset, split, epoch, devi
         repetition_penalty=args.repetition_penalty,
         max_length=args.max_length,
         min_length=None,
-        eos_token_id=tokenizer.eos_token_id,
+        eos_token_id=get_generation_eos_token_ids(tokenizer, args.model_type),
         pad_token_id=tokenizer.eos_token_id,
         return_dict_in_generate=True,
         output_scores=False

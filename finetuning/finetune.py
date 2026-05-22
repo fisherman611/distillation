@@ -51,7 +51,7 @@ from utils import print_rank, get_rank
 from utils import save_rank
 from utils import all_gather
 from utils import load_parallel, save_parallel
-from utils import get_tokenizer, get_model, resolve_hf_path
+from utils import get_tokenizer, get_model, resolve_hf_path, get_generation_eos_token_ids
 
 from distillm import forward_kl, reverse_kl, js_distance, tv_distance
 from distillm import skewed_forward_kl, skewed_reverse_kl, csd
@@ -247,7 +247,7 @@ def get_teacher_lm_loss(args, tokenizer, model, teacher_model, model_batch):
         t_gen_out = teacher_model.generate(
             **model_batch,
             pad_token_id=tokenizer.pad_token_id,
-            eos_token_id=tokenizer.eos_token_id,
+            eos_token_id=get_generation_eos_token_ids(tokenizer, args.model_type),
             max_length=args.max_length,
             top_k=0,
             top_p=1,
@@ -493,10 +493,6 @@ def evaluate(args, tokenizer, model, dataset: LMTrainDataset, split, epoch, devi
 
     print_rank("dp size", dp_world_size)
 
-    eos_token_id = tokenizer.eos_token_id
-    if args.model_type == "qwen":
-        eos_token_id = [tokenizer.eos_token_id, 151643]
-
     generation_config = GenerationConfig(
         do_sample=args.do_sample,
         top_p=args.top_p,
@@ -505,7 +501,7 @@ def evaluate(args, tokenizer, model, dataset: LMTrainDataset, split, epoch, devi
         repetition_penalty=args.repetition_penalty,
         max_length=args.max_length,
         min_length=None,
-        eos_token_id=eos_token_id,
+        eos_token_id=get_generation_eos_token_ids(tokenizer, args.model_type),
         pad_token_id=tokenizer.eos_token_id,
         return_dict_in_generate=True,
         output_scores=False

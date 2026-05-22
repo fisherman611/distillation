@@ -17,6 +17,7 @@ from src.benchmark_data_loader import DEFAULT_HF_DATASET_REPO
 from src.llm_services import parse_json_from_string, parse_llm_response
 from src.schema import Nl2CypherSample
 from src.utils import load_prompt
+from utils import get_generation_eos_token_ids
 
 
 def parse_args():
@@ -152,19 +153,22 @@ def generate_response_batch_tsd_kd(
 
     with torch.inference_mode():
         if generation_mode == "train_eval":
+            model_eos_token_ids = None
+            if hasattr(model, "generation_config"):
+                model_eos_token_ids = getattr(model.generation_config, "eos_token_id", None)
+
             generation_config = GenerationConfig(
                 max_new_tokens=max_length,
                 temperature=temperature,
                 do_sample=True,
                 top_k=0,
                 use_cache=True,
+                eos_token_id=get_generation_eos_token_ids(
+                    tokenizer,
+                    extra_eos_token_ids=model_eos_token_ids,
+                ),
                 pad_token_id=tokenizer.pad_token_id,
             )
-            if (
-                hasattr(model, "generation_config")
-                and getattr(model.generation_config, "eos_token_id", None) is not None
-            ):
-                generation_config.eos_token_id = model.generation_config.eos_token_id
 
             outputs = model.generate(
                 input_ids=inputs["input_ids"],
@@ -181,6 +185,8 @@ def generate_response_batch_tsd_kd(
                 temperature=temperature,
                 top_p=top_p,
                 top_k=top_k,
+                eos_token_id=get_generation_eos_token_ids(tokenizer),
+                pad_token_id=tokenizer.pad_token_id,
             )
 
     generated_ids = sequences[:, inputs["input_ids"].shape[-1]:]

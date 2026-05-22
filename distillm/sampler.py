@@ -2,6 +2,8 @@ import torch
 import os
 from transformers import GenerationConfig
 
+from utils import get_generation_eos_token_ids
+
 
 class SampleGenerator():
     def __init__(self, args, tokenizer):
@@ -17,7 +19,7 @@ class SampleGenerator():
             repetition_penalty=args.repetition_penalty,
             max_length=args.max_length,
             min_length=None,
-            eos_token_id=tokenizer.eos_token_id,
+            eos_token_id=get_generation_eos_token_ids(tokenizer, getattr(args, "model_type", None)),
             pad_token_id=tokenizer.eos_token_id,
             return_dict_in_generate=True,
             output_scores=False

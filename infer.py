@@ -22,6 +22,7 @@ from src.utils import build_messages
 from src.llm_services import parse_json_from_string, parse_llm_response
 from src.schema import Nl2CypherSample
 from src.logger_config import setup_logger
+from utils import get_generation_eos_token_ids
 
 RESULTS_DIR = "results"
 LOG_DIR = "logging_data/qwen3"
@@ -417,6 +418,10 @@ def generate_response_batch(tokenizer, model, batch_messages, max_length=1024, t
     tokenizer.padding_side = "left"
     inputs = tokenizer(texts, return_tensors="pt", padding=True).to(model.device)
     
+    model_eos_token_ids = None
+    if hasattr(model, "generation_config"):
+        model_eos_token_ids = getattr(model.generation_config, "eos_token_id", None)
+
     with torch.inference_mode():
         outputs = model.generate(
             **inputs,
@@ -425,6 +430,11 @@ def generate_response_batch(tokenizer, model, batch_messages, max_length=1024, t
             temperature=temperature,
             top_p=top_p,
             top_k=top_k,
+            eos_token_id=get_generation_eos_token_ids(
+                tokenizer,
+                extra_eos_token_ids=model_eos_token_ids,
+            ),
+            pad_token_id=tokenizer.pad_token_id,
         )
         
     generated_ids = outputs[:, inputs["input_ids"].shape[-1]:]

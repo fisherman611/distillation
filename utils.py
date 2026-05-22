@@ -27,6 +27,46 @@ HF_PATH_ALIASES = {
     "./results/qwen3/sft_4B/e5-bs2-lr1e-05-G8-N2-NN1-lora-32-64-0.1/1065": "hf://fisherman611/text-to-cypher-models/e5-bs2-lr1e-05-G8-N2-NN1-lora-32-64-0.1/1065",
 }
 
+QWEN_GENERATION_EOS_TOKEN_IDS = (151643, 151645)
+
+
+def get_generation_eos_token_ids(tokenizer, model_type=None, extra_eos_token_ids=None):
+    eos_token_ids = []
+
+    def add_token_id(token_id):
+        if token_id is None:
+            return
+        if isinstance(token_id, (list, tuple)):
+            for item in token_id:
+                add_token_id(item)
+            return
+        token_id = int(token_id)
+        if token_id not in eos_token_ids:
+            eos_token_ids.append(token_id)
+
+    add_token_id(getattr(tokenizer, "eos_token_id", None))
+    add_token_id(extra_eos_token_ids)
+
+    tokenizer_name = str(getattr(tokenizer, "name_or_path", "")).lower()
+    qwen_special_tokens = {"<|endoftext|>", "<|im_end|>"}
+    tokenizer_has_qwen_eos = False
+    if hasattr(tokenizer, "convert_ids_to_tokens"):
+        try:
+            tokenizer_has_qwen_eos = any(
+                tokenizer.convert_ids_to_tokens(token_id) in qwen_special_tokens
+                for token_id in QWEN_GENERATION_EOS_TOKEN_IDS
+            )
+        except Exception:
+            tokenizer_has_qwen_eos = False
+    is_qwen = model_type == "qwen" or "qwen" in tokenizer_name or tokenizer_has_qwen_eos
+    if is_qwen:
+        for token_id in QWEN_GENERATION_EOS_TOKEN_IDS:
+            add_token_id(token_id)
+
+    if len(eos_token_ids) == 1:
+        return eos_token_ids[0]
+    return eos_token_ids
+
 
 # Logging
 def print_args(args):
