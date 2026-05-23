@@ -27,10 +27,50 @@ HF_PATH_ALIASES = {
     "./results/qwen3/sft_4B/e5-bs2-lr1e-05-G8-N2-NN1-lora-32-64-0.1/1065": "hf://fisherman611/text-to-cypher-models/e5-bs2-lr1e-05-G8-N2-NN1-lora-32-64-0.1/1065",
 }
 
-QWEN_GENERATION_EOS_TOKEN_IDS = (151643, 151645)
+QWEN3_EOS_TOKEN_ID = 151645
+QWEN3_EOS_TOKEN = "<|im_end|>"
+QWEN_GENERATION_EOS_TOKEN_IDS = (QWEN3_EOS_TOKEN_ID,)
+
+
+def is_qwen_tokenizer(tokenizer, model_type=None):
+    tokenizer_name = str(getattr(tokenizer, "name_or_path", "")).lower()
+    if model_type == "qwen" or "qwen" in tokenizer_name:
+        return True
+
+    if hasattr(tokenizer, "convert_ids_to_tokens"):
+        try:
+            return tokenizer.convert_ids_to_tokens(QWEN3_EOS_TOKEN_ID) == QWEN3_EOS_TOKEN
+        except Exception:
+            return False
+
+    return False
+
+
+def configure_qwen_tokenizer(tokenizer, model_type=None):
+    if not is_qwen_tokenizer(tokenizer, model_type):
+        return tokenizer
+
+    eos_token = None
+    if hasattr(tokenizer, "convert_ids_to_tokens"):
+        try:
+            eos_token = tokenizer.convert_ids_to_tokens(QWEN3_EOS_TOKEN_ID)
+        except Exception:
+            eos_token = None
+
+    if eos_token and eos_token != getattr(tokenizer, "unk_token", None):
+        tokenizer.eos_token = eos_token
+    tokenizer.eos_token_id = QWEN3_EOS_TOKEN_ID
+    if tokenizer.eos_token is not None:
+        tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.pad_token_id = QWEN3_EOS_TOKEN_ID
+
+    return tokenizer
 
 
 def get_generation_eos_token_ids(tokenizer, model_type=None, extra_eos_token_ids=None):
+    if is_qwen_tokenizer(tokenizer, model_type):
+        return QWEN3_EOS_TOKEN_ID
+
     eos_token_ids = []
 
     def add_token_id(token_id):
@@ -46,22 +86,6 @@ def get_generation_eos_token_ids(tokenizer, model_type=None, extra_eos_token_ids
 
     add_token_id(getattr(tokenizer, "eos_token_id", None))
     add_token_id(extra_eos_token_ids)
-
-    tokenizer_name = str(getattr(tokenizer, "name_or_path", "")).lower()
-    qwen_special_tokens = {"<|endoftext|>", "<|im_end|>"}
-    tokenizer_has_qwen_eos = False
-    if hasattr(tokenizer, "convert_ids_to_tokens"):
-        try:
-            tokenizer_has_qwen_eos = any(
-                tokenizer.convert_ids_to_tokens(token_id) in qwen_special_tokens
-                for token_id in QWEN_GENERATION_EOS_TOKEN_IDS
-            )
-        except Exception:
-            tokenizer_has_qwen_eos = False
-    is_qwen = model_type == "qwen" or "qwen" in tokenizer_name or tokenizer_has_qwen_eos
-    if is_qwen:
-        for token_id in QWEN_GENERATION_EOS_TOKEN_IDS:
-            add_token_id(token_id)
 
     if len(eos_token_ids) == 1:
         return eos_token_ids[0]
@@ -303,10 +327,10 @@ def get_optimizer_params_peft(args, model: nn.Module):
 def get_tokenizer(args):
     tokenizer = AutoTokenizer.from_pretrained(args.model_path, padding_side="right")
 
-    if args.model_type == "qwen":
-        tokenizer.eos_token_id = 151645 
+    tokenizer = configure_qwen_tokenizer(tokenizer, args.model_type)
+    if tokenizer.eos_token is not None:
+        tokenizer.pad_token = tokenizer.eos_token
     tokenizer.pad_token_id = tokenizer.eos_token_id
-    tokenizer.pad_token = tokenizer.eos_token
     # print(tokenizer.eos_token_id)
 
     

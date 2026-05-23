@@ -9,6 +9,7 @@ import numpy as np
 from data_utils.indexed_dataset import make_builder
 from transformers import AutoTokenizer
 from arguments import get_args
+from utils import configure_qwen_tokenizer
 
 
 class Encoder(object):
@@ -20,6 +21,7 @@ class Encoder(object):
             self.args.model_path,
             padding_side="right"
         )
+        configure_qwen_tokenizer(Encoder.tokenizer, self.args.model_type)
 
     @staticmethod
     def _apply_chat_template(messages, add_generation_prompt):

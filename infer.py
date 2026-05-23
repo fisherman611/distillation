@@ -22,7 +22,7 @@ from src.utils import build_messages
 from src.llm_services import parse_json_from_string, parse_llm_response
 from src.schema import Nl2CypherSample
 from src.logger_config import setup_logger
-from utils import get_generation_eos_token_ids
+from utils import configure_qwen_tokenizer, get_generation_eos_token_ids
 
 RESULTS_DIR = "results"
 LOG_DIR = "logging_data/qwen3"
@@ -308,6 +308,7 @@ def init_model(model_name_or_path, ckpt_path=None, ckpt_revision=None, device=No
         trust_remote_code=True,
         revision=resolved_ckpt_revision if model_name_or_path == resolved_ckpt_source else None,
     )
+    configure_qwen_tokenizer(tokenizer)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 

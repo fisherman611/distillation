@@ -13,7 +13,7 @@ import argparse
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from huggingface_hub import login
 from src.llm_services import parse_json_from_string, parse_llm_response
-from utils import get_generation_eos_token_ids
+from utils import configure_qwen_tokenizer, get_generation_eos_token_ids
 
 hf_token = os.getenv("HF_READ_TOKEN")
 if hf_token:
@@ -38,6 +38,7 @@ def parse_args():
 
 def init_model(model_name):
     tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True, token=hf_token)
+    configure_qwen_tokenizer(tokenizer)
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
         dtype=torch.bfloat16 if torch.cuda.is_available() else torch.float16,
