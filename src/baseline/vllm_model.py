@@ -11,6 +11,7 @@ from typing import List, Dict, Any
 from huggingface_hub import login
 from vllm import LLM, SamplingParams
 from transformers import AutoTokenizer
+from utils import get_generation_eos_token_ids
 
 hf_token = os.getenv("HF_READ_TOKEN")
 if hf_token:
@@ -115,6 +116,10 @@ def generate_batch(
     -------
     list of decoded strings, one per input sample
     """
+    eos_token_ids = get_generation_eos_token_ids(tokenizer)
+    if isinstance(eos_token_ids, int):
+        eos_token_ids = [eos_token_ids]
+
     # Build prompts using the tokenizer's chat template
     prompts = [
         tokenizer.apply_chat_template(
@@ -130,6 +135,7 @@ def generate_batch(
         max_tokens=max_new_tokens,
         temperature=temperature,
         top_p=top_p,
+        stop_token_ids=eos_token_ids,
     )
 
     outputs = llm.generate(prompts, sampling_params)

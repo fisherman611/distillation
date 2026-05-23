@@ -27,9 +27,11 @@ HF_PATH_ALIASES = {
     "./results/qwen3/sft_4B/e5-bs2-lr1e-05-G8-N2-NN1-lora-32-64-0.1/1065": "hf://fisherman611/text-to-cypher-models/e5-bs2-lr1e-05-G8-N2-NN1-lora-32-64-0.1/1065",
 }
 
+QWEN2_5_EOS_TOKEN_ID = 151643
+QWEN2_5_EOS_TOKEN = "<|endoftext|>"
 QWEN3_EOS_TOKEN_ID = 151645
 QWEN3_EOS_TOKEN = "<|im_end|>"
-QWEN_GENERATION_EOS_TOKEN_IDS = (QWEN3_EOS_TOKEN_ID,)
+QWEN_GENERATION_EOS_TOKEN_IDS = (QWEN2_5_EOS_TOKEN_ID, QWEN3_EOS_TOKEN_ID)
 
 
 def is_qwen_tokenizer(tokenizer, model_type=None):
@@ -37,9 +39,13 @@ def is_qwen_tokenizer(tokenizer, model_type=None):
     if model_type == "qwen" or "qwen" in tokenizer_name:
         return True
 
+    qwen_special_tokens = {QWEN2_5_EOS_TOKEN, QWEN3_EOS_TOKEN}
     if hasattr(tokenizer, "convert_ids_to_tokens"):
         try:
-            return tokenizer.convert_ids_to_tokens(QWEN3_EOS_TOKEN_ID) == QWEN3_EOS_TOKEN
+            return any(
+                tokenizer.convert_ids_to_tokens(token_id) in qwen_special_tokens
+                for token_id in QWEN_GENERATION_EOS_TOKEN_IDS
+            )
         except Exception:
             return False
 
@@ -68,9 +74,6 @@ def configure_qwen_tokenizer(tokenizer, model_type=None):
 
 
 def get_generation_eos_token_ids(tokenizer, model_type=None, extra_eos_token_ids=None):
-    if is_qwen_tokenizer(tokenizer, model_type):
-        return QWEN3_EOS_TOKEN_ID
-
     eos_token_ids = []
 
     def add_token_id(token_id):
@@ -86,6 +89,8 @@ def get_generation_eos_token_ids(tokenizer, model_type=None, extra_eos_token_ids
 
     add_token_id(getattr(tokenizer, "eos_token_id", None))
     add_token_id(extra_eos_token_ids)
+    if is_qwen_tokenizer(tokenizer, model_type):
+        add_token_id(QWEN_GENERATION_EOS_TOKEN_IDS)
 
     if len(eos_token_ids) == 1:
         return eos_token_ids[0]
