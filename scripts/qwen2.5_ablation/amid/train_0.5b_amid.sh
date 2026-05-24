@@ -27,7 +27,7 @@ TEACHER_CKPT_NAME="qwen3-4B"
 TEACHER_CKPT="${TEACHER_CKPT:-Qwen/Qwen3-4B-Instruct-2507}"
 TEACHER_PEFT_PATH="${TEACHER_PEFT_PATH:-hf://fisherman611/text-to-cypher-models/e5-bs2-lr1e-05-G8-N2-NN1-lora-32-64-0.1/1065}"
 # data
-DATA_DIR="${DATA_DIR:-hf://fisherman611/text-to-cypher-processed-data/Cypherbench/qwen2.5}"
+DATA_DIR="${DATA_DIR:-hf://fisherman611/text-to-cypher-processed-data/Cypherbench/qwen}"
 # hp
 BATCH_SIZE=${BATCH_SIZE:-8}
 LR=${LR:-1e-4}
