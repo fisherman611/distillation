@@ -18,7 +18,7 @@ INFER_SCRIPT=""
 INFER_BENCHMARKS="Cypherbench,Mind_the_query,Neo4j_Text2Cypher"
 INFER_DB="full"
 INFER_DATA_SOURCE="auto"
-INFER_BATCH_SIZE=1
+INFER_BATCH_SIZE=384
 INFER_MAX_LENGTH="auto"
 INFER_LIMIT=""
 INFER_EXTRA_ARGS=""
@@ -47,7 +47,7 @@ Options:
   --infer-benchmarks <list>      Comma-separated benchmarks. Default: all supported benchmarks
   --infer-db <name|full>         DB/subset passed to infer.py. Default: full
   --infer-data-source <source>   Data source passed to infer.py. Default: auto
-  --infer-batch-size <n>         Batch size passed to infer.py. Default: 1
+  --infer-batch-size <n>         Batch size passed to infer.py. Default: 384
   --infer-max-length <n|auto>    Max generation length. Default: auto by model family and benchmark
   --infer-limit <n>              Optional sample limit passed to infer.py.
   --infer-extra-args <string>    Extra raw arguments appended to infer.py.
