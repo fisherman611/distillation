@@ -81,6 +81,13 @@ def build_prompt_token_mask(attention_mask, labels):
     return prompt_mask
 
 
+def build_generated_no_model_batch(labels):
+    return {
+        "label": labels,
+        "loss_mask": (labels != -100).float(),
+    }
+
+
 def _tokenize_marker(tokenizer, marker_text):
     return tokenizer.encode(marker_text, add_special_tokens=False)
 
@@ -555,18 +562,23 @@ def finetune(
                 rand_value = np.random.uniform(0, 1)
                 if "mixed" in args.type and rand_value < args.mixed_alpha:
                     model_batch = student_generator.run_sample(model, gen_data)
-                    no_model_batch["label"] = model_batch.pop("no_model_batch")
-                    replay_buffer.move_to_memory(model_batch, no_model_batch)
+                    no_model_batch = build_generated_no_model_batch(model_batch.pop("no_model_batch"))
+                    replay_buffer.move_to_memory(model_batch, no_model_batch, gen_data)
                     model_batch, no_model_batch, gen_data = replay_buffer.sample()
-                    model_batch, no_model_batch = replay_buffer.move_to_device(model_batch, no_model_batch, gen_data, device)
+                    model_batch, no_model_batch, gen_data = replay_buffer.move_to_device(
+                        model_batch,
+                        no_model_batch,
+                        gen_data,
+                        device,
+                    )
                 elif "adaptive" in args.type and (
                     rand_value < samp_threshold
                     or (rand_value < adaptive_threshold and len(replay_buffer) < args.capacity)
                 ):
                     model_batch = student_generator.run_sample(model, gen_data)
-                    no_model_batch["label"] = model_batch.pop("no_model_batch")
+                    no_model_batch = build_generated_no_model_batch(model_batch.pop("no_model_batch"))
                     if args.model_type in ["opt"]:
-                        model_batch.pop("position_ids")
+                        model_batch.pop("position_ids", None)
                     replay_buffer.move_to_memory(model_batch, no_model_batch, gen_data)
                 elif "adaptive" in args.type and rand_value < adaptive_threshold:
                     model_batch, no_model_batch, gen_data = replay_buffer.sample()
@@ -587,17 +599,20 @@ def finetune(
 
                 distil_loss = get_distil_loss(args, teacher_logits, no_model_batch, logits)
                 distil_loss = torch.nan_to_num(distil_loss, nan=0.0, posinf=100.0, neginf=0.0)
-                rel_loss = compute_multi_layer_span_context_relation_loss(
-                    tokenizer,
-                    model_batch["input_ids"],
-                    model_batch["attention_mask"],
-                    no_model_batch["label"],
-                    student_captured_hidden,
-                    teacher_outputs.hidden_states,
-                    no_model_batch["offset_mapping"],
-                    no_model_batch["span_offsets"],
-                    args,
-                )
+                if "offset_mapping" in no_model_batch and "span_offsets" in no_model_batch:
+                    rel_loss = compute_multi_layer_span_context_relation_loss(
+                        tokenizer,
+                        model_batch["input_ids"],
+                        model_batch["attention_mask"],
+                        no_model_batch["label"],
+                        student_captured_hidden,
+                        teacher_outputs.hidden_states,
+                        no_model_batch["offset_mapping"],
+                        no_model_batch["span_offsets"],
+                        args,
+                    )
+                else:
+                    rel_loss = logits.new_tensor(0.0)
 
                 weighted_rel_loss = grounding_cfg["w_rel"] * rel_loss
                 weighted_grounding_loss = torch.nan_to_num(

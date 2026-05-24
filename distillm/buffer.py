@@ -56,13 +56,16 @@ class ReplayBuffer:
     
     def move_to_device(self, model_data, no_model_data, gen_data, device):
         for k in model_data:
-            model_data[k] = model_data[k].to(device)
+            if torch.is_tensor(model_data[k]):
+                model_data[k] = model_data[k].to(device)
 
         for k in no_model_data:
-            no_model_data[k] = no_model_data[k].to(device)
+            if torch.is_tensor(no_model_data[k]):
+                no_model_data[k] = no_model_data[k].to(device)
 
         for k in gen_data:
-            gen_data[k] = gen_data[k].to(device)
+            if torch.is_tensor(gen_data[k]):
+                gen_data[k] = gen_data[k].to(device)
 
         return model_data, no_model_data, gen_data
     
@@ -70,10 +73,12 @@ class ReplayBuffer:
         device = torch.device("cpu")
         model_data_cpu, no_model_data_cpu = {}, {}
         for k in model_data:
-            model_data_cpu[k] = model_data[k].to(device)
+            if torch.is_tensor(model_data[k]):
+                model_data_cpu[k] = model_data[k].to(device)
         
         for k in no_model_data:
-            no_model_data_cpu[k] = no_model_data[k].to(device)
+            if torch.is_tensor(no_model_data[k]):
+                no_model_data_cpu[k] = no_model_data[k].to(device)
 
         prompt_attention_mask = gen_data["attention_mask"].to(device)
         
