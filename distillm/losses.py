@@ -331,7 +331,7 @@ def amid(logits, teacher_logits, no_model_batch, args, **kwargs):
         return torch.sum(x * mask.view(-1), dim=0) / torch.sum(mask.view(-1), dim=0)
 
     if div_name == "ab":
-        ab_alpha, ab_beta = 0.2, 0.7
+        ab_alpha, ab_beta = 0.5, 0.5
         apb = ab_alpha + ab_beta
         if div_order == "pr":
             term1 = torch.exp(torch.logsumexp(ab_alpha * logp + ab_beta * logr, dim=-1))
