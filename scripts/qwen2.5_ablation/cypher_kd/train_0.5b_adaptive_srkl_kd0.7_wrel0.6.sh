@@ -3,7 +3,7 @@
 if [[ -n "${RUN_GPUS:-}" ]]; then
   IFS=', ' read -r -a GPUS <<< "${RUN_GPUS}"
 else
-  GPUS=(0 1)
+  GPUS=(0)
 fi
 export CUDA_VISIBLE_DEVICES=$(IFS=,; echo "${GPUS[*]}")
 
@@ -23,8 +23,8 @@ BASE_PATH=.
 SCRIPT_NAME="$(basename "${BASH_SOURCE[0]}" .sh)"
 SCRIPT_GROUP="$(basename "$(dirname "${BASH_SOURCE[0]}")")"
 SAVE_TAG="updated_span_question_schema_2_update_span_weight_${SCRIPT_GROUP}_${SCRIPT_NAME}"
-CKPT_NAME="qwen2.5-0.5B"
-CKPT="Qwen/Qwen2.5-0.5B"
+CKPT_NAME="qwen2.5-0.5B-Instruct"
+CKPT="Qwen/Qwen2.5-0.5B-Instruct"
 TEACHER_CKPT_NAME="qwen3-4B"
 TEACHER_CKPT="Qwen/Qwen3-4B-Instruct-2507"
 DATA_DIR="hf://fisherman611/text-to-cypher-processed-data/Cypherbench/qwen"

@@ -25,8 +25,8 @@ BASE_PATH=.
 DATA_DIR="${DATA_DIR:-hf://fisherman611/text-to-cypher-processed-data/Cypherbench/qwen}"
 
 # Model
-CKPT_NAME="qwen2.5-0.5B"
-CKPT="${CKPT:-Qwen/Qwen2.5-0.5B}"
+CKPT_NAME="qwen2.5-0.5B-Instruct"
+CKPT="${CKPT:-Qwen/Qwen2.5-0.5B-Instruct}"
 
 # Hyper-parameters
 BATCH_SIZE=2
