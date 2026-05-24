@@ -32,7 +32,7 @@ DATA_DIR="${DATA_DIR:-hf://fisherman611/text-to-cypher-processed-data/Cypherbenc
 BATCH_SIZE=${BATCH_SIZE:-8}
 LR=${LR:-1e-4}
 GRAD_ACC=${GRAD_ACC:-1}
-EVAL_BATCH_SIZE=384
+EVAL_BATCH_SIZE=248
 EPOCHS=${EPOCHS:-5}
 KD_RATIO=${KD_RATIO:-1.0}
 # length

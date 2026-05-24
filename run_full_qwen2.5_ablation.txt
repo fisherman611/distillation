@@ -40,4 +40,4 @@ bash running.sh \
   --gpus-per-job 2 \
   --infer-after-train \
   --infer-db full \
-  --infer-batch-size 384
+  --infer-batch-size 248
