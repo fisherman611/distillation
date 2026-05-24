@@ -519,7 +519,8 @@ def finetune(
     student_generator = SampleGenerator(args, tokenizer)
 
     step, global_step = 1, 1
-    total_loss, total_distil_loss, total_time = 0.0, 0.0, 0.0
+    total_loss, total_distil_loss, total_grounding_loss, total_time = 0.0, 0.0, 0.0, 0.0
+    total_rel_loss = 0.0
     
     adaptive_threshold = args.init_threshold if "adaptive" in args.type else -1.0
     prev_avg_loss = evaluate(args, tokenizer, model, dataset["dev"], "dev", 0, device, adaptive_threshold)
