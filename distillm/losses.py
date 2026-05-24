@@ -365,7 +365,7 @@ def amid(logits, teacher_logits, no_model_batch, args, **kwargs):
 
     elif div_name == "ab":
         # ab_alpha, ab_beta = args.ab_alpha, args.ab_beta
-        ab_alpha, ab_beta = 0.2, 0.7
+        ab_alpha, ab_beta = 0.5, 0.5
         apb = ab_alpha + ab_beta
 
         if div_order == "pr":
