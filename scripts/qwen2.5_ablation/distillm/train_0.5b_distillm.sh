@@ -34,7 +34,7 @@ DATA_DIR="${DATA_DIR:-hf://fisherman611/text-to-cypher-processed-data/Cypherbenc
 BATCH_SIZE=8
 LR=0.0001
 GRAD_ACC=1
-EVAL_BATCH_SIZE=248
+EVAL_BATCH_SIZE=256
 EPOCHS=5
 # length
 MAX_LENGTH=892
