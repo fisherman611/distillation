@@ -20,6 +20,7 @@ except ImportError:
 configure_project_paths()
 
 from arguments import get_args
+from data_utils.lm_datasets_new import extract_event_span_offsets, extract_text2cypher_span_offsets
 from distillm import ReplayBuffer, SampleGenerator
 try:
     from .span_finetune import (
@@ -62,6 +63,58 @@ def get_grounding_loss_config(args):
     if (not math.isfinite(w_rel)) or w_rel < 0.0:
         w_rel = 1.0
     return {"w_rel": min(w_rel, 1e4)}
+
+
+def build_generated_no_model_batch(tokenizer, args, model_batch, labels):
+    loss_mask = (labels != -100).float()
+    device = labels.device
+    input_ids = model_batch["input_ids"].detach().cpu()
+    attention_mask = model_batch["attention_mask"].detach().cpu().bool()
+    labels_cpu = labels.detach().cpu()
+
+    offset_mappings = []
+    span_offsets = []
+    for idx in range(input_ids.size(0)):
+        valid_mask = attention_mask[idx]
+        response_mask = labels_cpu[idx] != -100
+        prompt_mask = valid_mask & ~response_mask
+
+        prompt_ids = input_ids[idx][prompt_mask].tolist()
+        response_ids = labels_cpu[idx][response_mask].tolist()
+        prompt_text = tokenizer.decode(
+            prompt_ids,
+            skip_special_tokens=False,
+            clean_up_tokenization_spaces=False,
+        )
+        response_text = tokenizer.decode(
+            response_ids,
+            skip_special_tokens=True,
+            clean_up_tokenization_spaces=False,
+        )
+        full_text = prompt_text + response_text
+
+        encoded = tokenizer(
+            full_text,
+            return_offsets_mapping=True,
+            truncation=True,
+            max_length=args.max_length,
+            padding="max_length",
+            add_special_tokens=False,
+            return_tensors="pt",
+        )
+        offset_mappings.append(encoded["offset_mapping"])
+
+        sample_spans = extract_text2cypher_span_offsets(full_text, response_text)
+        if not sample_spans:
+            sample_spans = extract_event_span_offsets(full_text, response_text)
+        span_offsets.append(sample_spans)
+
+    return {
+        "label": labels,
+        "loss_mask": loss_mask,
+        "offset_mapping": torch.cat(offset_mappings, dim=0).to(device),
+        "span_offsets": span_offsets,
+    }
 
 
 def _zero_scalar_like(tensor):
@@ -420,6 +473,12 @@ def compute_multi_layer_span_context_relation_loss(
     # Backward compatible flag resolution:
     # prefer `use_span_weight`, fallback to legacy `use_span_length_weight`.
     use_span_weight = getattr(args, "use_span_weight", getattr(args, "use_span_length_weight", True))
+    if offsets_mapping is None or spans_offsets is None:
+        return _zero_scalar_like(attention_mask)
+    if not isinstance(offsets_mapping, torch.Tensor):
+        return _zero_scalar_like(attention_mask)
+    if not isinstance(spans_offsets, (list, tuple)) or len(spans_offsets) != attention_mask.size(0):
+        return _zero_scalar_like(attention_mask)
 
     token_to_span_map, span_mask = build_token_to_span_map(attention_mask, offsets_mapping, spans_offsets)
     if token_to_span_map is None:
@@ -555,16 +614,20 @@ def finetune(
                 rand_value = np.random.uniform(0, 1)
                 if "mixed" in args.type and rand_value < args.mixed_alpha:
                     model_batch = student_generator.run_sample(model, gen_data)
-                    no_model_batch["label"] = model_batch.pop("no_model_batch")
-                    replay_buffer.move_to_memory(model_batch, no_model_batch)
+                    generated_labels = model_batch.pop("no_model_batch")
+                    no_model_batch = build_generated_no_model_batch(tokenizer, args, model_batch, generated_labels)
+                    replay_buffer.move_to_memory(model_batch, no_model_batch, gen_data)
                     model_batch, no_model_batch, gen_data = replay_buffer.sample()
-                    model_batch, no_model_batch = replay_buffer.move_to_device(model_batch, no_model_batch, gen_data, device)
+                    model_batch, no_model_batch, gen_data = replay_buffer.move_to_device(
+                        model_batch, no_model_batch, gen_data, device
+                    )
                 elif "adaptive" in args.type and (
                     rand_value < samp_threshold
                     or (rand_value < adaptive_threshold and len(replay_buffer) < args.capacity)
                 ):
                     model_batch = student_generator.run_sample(model, gen_data)
-                    no_model_batch["label"] = model_batch.pop("no_model_batch")
+                    generated_labels = model_batch.pop("no_model_batch")
+                    no_model_batch = build_generated_no_model_batch(tokenizer, args, model_batch, generated_labels)
                     if args.model_type in ["opt"]:
                         model_batch.pop("position_ids")
                     replay_buffer.move_to_memory(model_batch, no_model_batch, gen_data)
