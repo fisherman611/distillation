@@ -16,7 +16,7 @@ from huggingface_hub import HfApi
 api = HfApi()
 
 api.upload_folder(
-    folder_path="llama_8b_results/",
+    folder_path="results/",
     repo_id="fisherman611/t2c_qwen2.5",
     repo_type="model",
 )
