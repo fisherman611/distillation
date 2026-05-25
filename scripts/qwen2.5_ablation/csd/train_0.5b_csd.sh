@@ -24,17 +24,17 @@ DISTRIBUTED_ARGS="--nproc_per_node $GPUS_PER_NODE \
 BASE_PATH=.
 SCRIPT_NAME="$(basename "${BASH_SOURCE[0]}" .sh)"
 SCRIPT_GROUP="$(basename "$(dirname "${BASH_SOURCE[0]}")")"
-CKPT_NAME="qwen2.5-0.5B"
-CKPT="${CKPT:-Qwen/Qwen2.5-0.5B}"
+CKPT_NAME="qwen2.5-0.5B-Instruct"
+CKPT="${CKPT:-Qwen/Qwen2.5-0.5B-Instruct}"
 TEACHER_CKPT_NAME="qwen3-4B"
 TEACHER_CKPT="${TEACHER_CKPT:-Qwen/Qwen3-4B-Instruct-2507}"
 # data
 DATA_DIR="${DATA_DIR:-hf://fisherman611/text-to-cypher-processed-data/Cypherbench/qwen}"
 # hp
-BATCH_SIZE=8
+BATCH_SIZE=2
 LR=0.0001
-GRAD_ACC=1
-EVAL_BATCH_SIZE=128
+GRAD_ACC=8
+EVAL_BATCH_SIZE=16
 EPOCHS=5
 # length
 MAX_LENGTH=892

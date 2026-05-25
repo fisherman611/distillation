@@ -55,6 +55,7 @@ from utils import get_tokenizer, get_model, resolve_hf_path
 
 from distillm import forward_kl, reverse_kl, js_distance, tv_distance
 from distillm import skewed_forward_kl, skewed_reverse_kl, csd
+from distillm import ab_div, bdkd, AKL, wsd, alphanet, amid
 from distillm import SampleGenerator, ReplayBuffer
 
 from rouge_metric import compute_metrics
@@ -237,6 +238,18 @@ def get_distil_loss(args, tokenizer, model, teacher_model, model_batch, no_model
             distil_loss = reverse_kl(logits, teacher_logits, no_model_batch)
         elif "csd" in args.type:
             distil_loss = csd(logits, teacher_logits, no_model_batch)
+        elif "bdkd" in args.type:
+            distil_loss = bdkd(logits, teacher_logits, no_model_batch)
+        elif "akl" in args.type:
+            distil_loss = AKL(teacher_logits, logits, no_model_batch)
+        elif "wsd" in args.type:
+            distil_loss = wsd(logits, teacher_logits, no_model_batch)
+        elif "alphanet" in args.type:
+            distil_loss = alphanet(logits, teacher_logits, no_model_batch, args.alphanet_alpha, args.alphanet_beta)
+        elif "amid" in args.type:
+            distil_loss = amid(logits, teacher_logits, no_model_batch, args)
+        elif "ab" in args.type:
+            distil_loss = ab_div(logits, teacher_logits, no_model_batch, args.ab_alpha, args.ab_beta)
         else:
             raise NotImplementedError
     return distil_loss

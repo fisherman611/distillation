@@ -21,18 +21,18 @@ DISTRIBUTED_ARGS="--nproc_per_node $GPUS_PER_NODE \
 
 # model
 BASE_PATH=.
-CKPT_NAME="qwen2.5-0.5B"
-CKPT="${CKPT:-Qwen/Qwen2.5-0.5B}"
+CKPT_NAME="qwen2.5-0.5B-Instruct"
+CKPT="${CKPT:-Qwen/Qwen2.5-0.5B-Instruct}"
 TEACHER_CKPT_NAME="qwen3-4B"
 TEACHER_CKPT="${TEACHER_CKPT:-Qwen/Qwen3-4B-Instruct-2507}"
 TEACHER_PEFT_PATH="${TEACHER_PEFT_PATH:-hf://fisherman611/text-to-cypher-models/e5-bs2-lr1e-05-G8-N2-NN1-lora-32-64-0.1/1065}"
 # data
 DATA_DIR="${DATA_DIR:-hf://fisherman611/text-to-cypher-processed-data/Cypherbench/qwen}"
 # hp
-BATCH_SIZE=${BATCH_SIZE:-8}
+BATCH_SIZE=2
 LR=${LR:-1e-4}
-GRAD_ACC=${GRAD_ACC:-1}
-EVAL_BATCH_SIZE=128
+GRAD_ACC=8
+EVAL_BATCH_SIZE=16
 EPOCHS=${EPOCHS:-5}
 KD_RATIO=${KD_RATIO:-1.0}
 # length
