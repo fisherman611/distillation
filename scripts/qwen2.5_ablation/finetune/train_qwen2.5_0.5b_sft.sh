@@ -3,7 +3,7 @@
 if [[ -n "${RUN_GPUS:-}" ]]; then
   IFS=', ' read -r -a GPUS <<< "${RUN_GPUS}"
 else
-  GPUS=(0)
+  GPUS=(0 1)
 fi
 export CUDA_VISIBLE_DEVICES=$(IFS=,; echo "${GPUS[*]}")
 
@@ -29,10 +29,10 @@ CKPT_NAME="qwen2.5-0.5B-Instruct"
 CKPT="${CKPT:-Qwen/Qwen2.5-0.5B-Instruct}"
 
 # Hyper-parameters
-BATCH_SIZE=2
+BATCH_SIZE=8
 LR=0.00005
-GRAD_ACC=8
-EVAL_BATCH_SIZE=16
+GRAD_ACC=1
+EVAL_BATCH_SIZE=128
 EPOCHS=5
 
 # Length

@@ -17,6 +17,6 @@ api = HfApi()
 
 api.upload_folder(
     folder_path="llama_8b_results/",
-    repo_id="fisherman611/text-to-cypher-llama-model",
+    repo_id="fisherman611/t2c_qwen2.5",
     repo_type="model",
 )

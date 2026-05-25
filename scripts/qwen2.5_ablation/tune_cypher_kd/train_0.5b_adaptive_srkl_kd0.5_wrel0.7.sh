@@ -3,7 +3,7 @@
 if [[ -n "${RUN_GPUS:-}" ]]; then
   IFS=', ' read -r -a GPUS <<< "${RUN_GPUS}"
 else
-  GPUS=(0)
+  GPUS=(0 1)
 fi
 export CUDA_VISIBLE_DEVICES=$(IFS=,; echo "${GPUS[*]}")
 
@@ -28,17 +28,17 @@ CKPT="Qwen/Qwen2.5-0.5B-Instruct"
 TEACHER_CKPT_NAME="qwen3-4B"
 TEACHER_CKPT="Qwen/Qwen3-4B-Instruct-2507"
 DATA_DIR="hf://fisherman611/text-to-cypher-processed-data/Cypherbench/qwen"
-BATCH_SIZE=2
+BATCH_SIZE=8
 LR=0.0001
-GRAD_ACC=8
-EVAL_BATCH_SIZE=16
+GRAD_ACC=1
+EVAL_BATCH_SIZE=128
 EPOCHS=5
 MAX_LENGTH=892
 MAX_PROMPT_LENGTH=797
 SAVE_PATH="${SAVE_PATH:-${BASE_PATH}/results/qwen2.5/${SCRIPT_GROUP}/${SAVE_TAG}}"
 SEED=42
-W_REL_LOSS=0.6
-KD_RATIO=0.7
+W_REL_LOSS=0.7
+KD_RATIO=0.5
 STUDENT_LAYER_MAPPING=(-1)
 TEACHER_LAYER_MAPPING=(-1)
 

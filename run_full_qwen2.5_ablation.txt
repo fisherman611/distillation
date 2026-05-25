@@ -1,0 +1,43 @@
+#!/bin/bash
+#SBATCH --account=le-lab
+#SBATCH --gres=gpu:L40S:8
+#SBATCH --mem=256GB
+#SBATCH --time=72:00:00
+#SBATCH --partition=general
+#SBATCH --output=run_all-%j.out
+#SBATCH --mail-type=END,FAIL
+#SBATCH --mail-user=tucnguye@iu.edu
+
+set -euo pipefail
+
+REPO_DIR="${REPO_DIR:-.}"
+cd "${REPO_DIR}"
+git pull --ff-only
+
+set +u
+eval "$(conda shell.bash hook)"
+
+ENV_NAME="qwen2.5"
+if ! conda env list | awk '{print $1}' | grep -qx "${ENV_NAME}"; then
+  conda create -n "${ENV_NAME}" python=3.10 -y
+fi
+conda activate "${ENV_NAME}"
+set -u
+
+python -m pip install --upgrade pip
+python -m pip install uv
+uv sync
+set +u
+source .venv/bin/activate
+set -u
+
+HF_TOKEN="${HF_TOKEN:-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}"
+hf auth login --token "${HF_TOKEN}"
+
+bash running.sh \
+  --filter qwen2.5_ablation \
+  --gpus 4,5,6,7 \
+  --gpus-per-job 2 \
+  --infer-after-train \
+  --infer-db full \
+  --infer-batch-size 128

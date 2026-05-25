@@ -3,7 +3,7 @@
 if [[ -n "${RUN_GPUS:-}" ]]; then
   IFS=', ' read -r -a GPUS <<< "${RUN_GPUS}"
 else
-  GPUS=(0)
+  GPUS=(0 1)
 fi
 export CUDA_VISIBLE_DEVICES=$(IFS=,; echo "${GPUS[*]}")
 
@@ -31,10 +31,10 @@ TEACHER_CKPT="${TEACHER_CKPT:-Qwen/Qwen3-4B-Instruct-2507}"
 # data
 DATA_DIR="${DATA_DIR:-hf://fisherman611/text-to-cypher-processed-data/Cypherbench/qwen}"
 # hp
-BATCH_SIZE=2
+BATCH_SIZE=8
 LR=0.0001
-GRAD_ACC=8
-EVAL_BATCH_SIZE=16
+GRAD_ACC=1
+EVAL_BATCH_SIZE=128
 EPOCHS=5
 # length
 MAX_LENGTH=892

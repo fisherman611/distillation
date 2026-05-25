@@ -21,7 +21,8 @@ dependencies = [
     "torch==2.9.1",
     "rouge-score",
     "rich",
-    "setuptools"
+    "setuptools",
+    "neo4j"
 ]
 
 [tool.uv]
