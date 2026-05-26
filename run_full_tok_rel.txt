@@ -39,5 +39,5 @@ bash running.sh \
   --gpus 0,1,2,3,4,5,6,7 \
   --gpus-per-job 2 \
   --infer-after-train \
-  --infer-db full \
+  --infer-db Mind_the_query \
   --infer-batch-size 128
