@@ -13,6 +13,7 @@ BENCHMARK="${BENCHMARK:-Mind_the_query}"
 OUTPUT_DIR="${OUTPUT_DIR:-results/Mind_the_query}"
 LOG_DIR="${LOG_DIR:-run_logs/inferent_tok_rel}"
 GPU_LIST="${RUNNER_GPUS:-0,1,2,3,4,5,6,7}"
+GPUS_PER_JOB="${GPUS_PER_JOB:-1}"
 BATCH_SIZE="${BATCH_SIZE:-128}"
 TEMPERATURE="${TEMPERATURE:-0.5}"
 TOP_P="${TOP_P:-0.95}"
@@ -38,6 +39,20 @@ if [[ "${#GPUS[@]}" -eq 0 ]]; then
   echo "No GPUs configured. Set RUNNER_GPUS, for example: RUNNER_GPUS=0,1,2,3" >&2
   exit 1
 fi
+
+if ! [[ "${GPUS_PER_JOB}" =~ ^[1-9][0-9]*$ ]]; then
+  echo "GPUS_PER_JOB must be a positive integer. Got: ${GPUS_PER_JOB}" >&2
+  exit 1
+fi
+
+GPU_CHUNKS=()
+for ((idx = 0; idx < ${#GPUS[@]}; idx += GPUS_PER_JOB)); do
+  gpu_chunk="${GPUS[$idx]}"
+  for ((offset = 1; offset < GPUS_PER_JOB && idx + offset < ${#GPUS[@]}; offset += 1)); do
+    gpu_chunk="${gpu_chunk},${GPUS[$((idx + offset))]}"
+  done
+  GPU_CHUNKS+=("${gpu_chunk}")
+done
 
 QUEUE_DIR="${LOG_DIR}/queue_${$}"
 QUEUE_PENDING_DIR="${QUEUE_DIR}/pending"
@@ -74,7 +89,7 @@ claim_next_job() {
 
 run_worker() {
   local worker_idx="$1"
-  local gpu="$2"
+  local gpu_chunk="$2"
   local idx
   local job_name
   local experiment
@@ -90,14 +105,14 @@ run_worker() {
     output_path="${OUTPUT_DIR}/full_cyphers_result_Qwen3-0.6B_${experiment}_ckpt${CKPT_STEP}.json"
     log_path="${LOG_DIR}/${experiment}_ckpt${CKPT_STEP}.log"
 
-    echo "[launch] gpu=${gpu} experiment=${experiment}"
+    echo "[launch] gpus=${gpu_chunk} experiment=${experiment}"
     echo "         ckpt=${ckpt_path}"
     echo "         out=${output_path}"
     echo "         log=${log_path}"
 
     if (
       set -euo pipefail
-      export CUDA_VISIBLE_DEVICES="${gpu}"
+      export CUDA_VISIBLE_DEVICES="${gpu_chunk}"
       "${PYTHON_BIN}" infer.py \
         --benchmark "${BENCHMARK}" \
         --model "${MODEL_NAME}" \
@@ -110,18 +125,18 @@ run_worker() {
         --device "${DEVICE}" \
         --max-length "${MAX_LENGTH}"
     ) > "${log_path}" 2>&1; then
-      echo "[done] gpu=${gpu} experiment=${experiment}"
+      echo "[done] gpus=${gpu_chunk} experiment=${experiment}"
     else
       status="$?"
-      echo "[fail] gpu=${gpu} experiment=${experiment} exit=${status}" >&2
+      echo "[fail] gpus=${gpu_chunk} experiment=${experiment} exit=${status}" >&2
       echo "exit=${status} experiment=${experiment} log=${log_path}" > "${QUEUE_FAILED_DIR}/${job_name}"
     fi
   done
 }
 
 pids=()
-for idx in "${!GPUS[@]}"; do
-  run_worker "${idx}" "${GPUS[$idx]}" &
+for idx in "${!GPU_CHUNKS[@]}"; do
+  run_worker "${idx}" "${GPU_CHUNKS[$idx]}" &
   pids+=("$!")
 done
 

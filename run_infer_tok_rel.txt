@@ -1,0 +1,58 @@
+#!/bin/bash
+#SBATCH --account=le-lab
+#SBATCH --gres=gpu:L40S:8
+#SBATCH --mem=256GB
+#SBATCH --time=72:00:00
+#SBATCH --partition=general
+#SBATCH --output=run_all-%j.out
+#SBATCH --mail-type=END,FAIL
+#SBATCH --mail-user=tucnguye@iu.edu
+
+set -euo pipefail
+
+REPO_DIR="${REPO_DIR:-.}"
+cd "${REPO_DIR}"
+git pull --ff-only
+
+set +u
+eval "$(conda shell.bash hook)"
+
+ENV_NAME="qwen3-tok-rel"
+if ! conda env list | awk '{print $1}' | grep -qx "${ENV_NAME}"; then
+  conda create -n "${ENV_NAME}" python=3.10 -y
+fi
+conda activate "${ENV_NAME}"
+set -u
+
+python -m pip install --upgrade pip
+python -m pip install uv
+uv sync
+set +u
+source .venv/bin/activate
+set -u
+
+HF_TOKEN="${HF_TOKEN:-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}"
+hf auth login --token "${HF_TOKEN}"
+
+RUNNER_GPUS="${RUNNER_GPUS:-0,1,2,3,4,5,6,7}" \
+GPUS_PER_JOB="${GPUS_PER_JOB:-2}" \
+BATCH_SIZE="${BATCH_SIZE:-128}" \
+BENCHMARK="${BENCHMARK:-Mind_the_query}" \
+bash inferent_tok_rel.sh
+
+upload_with_script() {
+  local upload_script="$1"
+  local label="$2"
+
+  if [[ -f "${upload_script}" ]]; then
+    echo "[upload] Uploading ${label} to Hugging Face..."
+    python "${upload_script}"
+    echo "[upload-done] ${label} uploaded to Hugging Face."
+  else
+    echo "Upload script does not exist: ${upload_script}" >&2
+    exit 1
+  fi
+}
+
+upload_with_script "$(pwd)/upload_to_hf.py" "results"
+upload_with_script "$(pwd)/upload_to_hf_2.py" "run_logs"
