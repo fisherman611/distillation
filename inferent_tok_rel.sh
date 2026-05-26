@@ -39,16 +39,52 @@ if [[ "${#GPUS[@]}" -eq 0 ]]; then
   exit 1
 fi
 
+QUEUE_DIR="${LOG_DIR}/queue_${$}"
+QUEUE_PENDING_DIR="${QUEUE_DIR}/pending"
+QUEUE_CLAIMED_DIR="${QUEUE_DIR}/claimed"
+QUEUE_FAILED_DIR="${QUEUE_DIR}/failed"
+
+mkdir -p "${QUEUE_PENDING_DIR}" "${QUEUE_CLAIMED_DIR}" "${QUEUE_FAILED_DIR}"
+
+for idx in "${!EXPERIMENTS[@]}"; do
+  printf -v queue_name "%06d" "${idx}"
+  : > "${QUEUE_PENDING_DIR}/${queue_name}"
+done
+
+claim_next_job() {
+  local worker_idx="$1"
+  local queue_file
+  local claimed_file
+  local job_name
+
+  while true; do
+    queue_file="$(find "${QUEUE_PENDING_DIR}" -maxdepth 1 -type f | sort | head -n 1)"
+    if [[ -z "${queue_file}" ]]; then
+      return 1
+    fi
+
+    job_name="$(basename "${queue_file}")"
+    claimed_file="${QUEUE_CLAIMED_DIR}/${job_name}.worker${worker_idx}"
+    if mv "${queue_file}" "${claimed_file}" 2>/dev/null; then
+      echo "${job_name}"
+      return 0
+    fi
+  done
+}
+
 run_worker() {
   local worker_idx="$1"
   local gpu="$2"
   local idx
+  local job_name
   local experiment
   local ckpt_path
   local output_path
   local log_path
+  local status
 
-  for ((idx = worker_idx; idx < ${#EXPERIMENTS[@]}; idx += ${#GPUS[@]})); do
+  while job_name="$(claim_next_job "${worker_idx}")"; do
+    idx=$((10#${job_name}))
     experiment="${EXPERIMENTS[$idx]}"
     ckpt_path="${HF_ROOT}/${experiment}/${CKPT_STEP}"
     output_path="${OUTPUT_DIR}/full_cyphers_result_Qwen3-0.6B_${experiment}_ckpt${CKPT_STEP}.json"
@@ -59,7 +95,7 @@ run_worker() {
     echo "         out=${output_path}"
     echo "         log=${log_path}"
 
-    (
+    if (
       set -euo pipefail
       export CUDA_VISIBLE_DEVICES="${gpu}"
       "${PYTHON_BIN}" infer.py \
@@ -73,7 +109,13 @@ run_worker() {
         --top-k "${TOP_K}" \
         --device "${DEVICE}" \
         --max-length "${MAX_LENGTH}"
-    ) > "${log_path}" 2>&1
+    ) > "${log_path}" 2>&1; then
+      echo "[done] gpu=${gpu} experiment=${experiment}"
+    else
+      status="$?"
+      echo "[fail] gpu=${gpu} experiment=${experiment} exit=${status}" >&2
+      echo "exit=${status} experiment=${experiment} log=${log_path}" > "${QUEUE_FAILED_DIR}/${job_name}"
+    fi
   done
 }
 
@@ -89,6 +131,9 @@ for pid in "${pids[@]}"; do
     failures=$((failures + 1))
   fi
 done
+
+job_failures="$(find "${QUEUE_FAILED_DIR}" -maxdepth 1 -type f | wc -l | tr -d '[:space:]')"
+failures=$((failures + job_failures))
 
 if [[ "${failures}" -gt 0 ]]; then
   echo "Finished with ${failures} failed inference job(s). Check logs in ${LOG_DIR}." >&2
