@@ -532,6 +532,9 @@ def finetune(
     for epoch in range(args.epochs):
         sampler.set_epoch(epoch)
 
+        alloc_sum = 0.0
+        alloc_count = 0
+
         model.train()
         for _, (model_batch, no_model_batch, gen_data, _, _) in enumerate(train_dataloader):
             dataset["train"].move_to_device(model_batch, no_model_batch, gen_data, device)
@@ -664,6 +667,19 @@ def finetune(
                 save_rank(log_str, os.path.join(args.save, "log.txt"))
                 total_loss, total_distil_loss, total_grounding_loss, total_time = 0.0, 0.0, 0.0, 0.0
                 total_rel_loss = 0.0
+
+                if torch.cuda.is_available():
+                    allocated = torch.cuda.memory_allocated() / 1e9
+                    peak_alloc = torch.cuda.max_memory_allocated() / 1e9
+                    alloc_sum += allocated
+                    alloc_count += 1
+                    avg_alloc = alloc_sum / alloc_count
+                    mem_log_str = "train | avg_alloc {:.4f} GB | peak_alloc {:.4f} GB".format(
+                        avg_alloc,
+                        peak_alloc,
+                    )
+                    print_rank(mem_log_str)
+                    save_rank(mem_log_str, os.path.join(args.save, "log.txt"))
 
             if args.save and _should_run_interval(global_step, step, args.save_interval, args.gradient_accumulation_steps):
                 save_dir_path = os.path.join(args.save, str(global_step))
