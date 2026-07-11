@@ -16,7 +16,7 @@ from huggingface_hub import HfApi
 api = HfApi()
 
 api.upload_folder(
-    folder_path="llama_8b_results/",
-    repo_id="fisherman611/text-to-cypher-llama-model",
+    folder_path="run_logs/",
+    repo_id="distillation-sql/time_comparisons",
     repo_type="model",
 )
